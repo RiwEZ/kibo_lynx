@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ProjectModuleManager">
+    <modules>
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/DefaultApk.iml" filepath="$PROJECT_DIR$/.idea/modules/DefaultApk.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/app/DefaultApk.app.iml" filepath="$PROJECT_DIR$/.idea/modules/app/DefaultApk.app.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/guest_science_library/DefaultApk.guest_science_library.iml" filepath="$PROJECT_DIR$/.idea/modules/guest_science_library/DefaultApk.guest_science_library.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/kibo_rpc_api/DefaultApk.kibo_rpc_api.iml" filepath="$PROJECT_DIR$/.idea/modules/kibo_rpc_api/DefaultApk.kibo_rpc_api.iml" />
+    </modules>
+  </component>
+</project>
