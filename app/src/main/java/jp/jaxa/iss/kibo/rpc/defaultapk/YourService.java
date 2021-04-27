@@ -84,7 +84,7 @@ public class YourService extends KiboRpcService {
         }
         catch (Exception e) {
             Log.i(TAG, "Failed processing img");
-            return ;
+            return;
         }
 
         try {
@@ -95,8 +95,8 @@ public class YourService extends KiboRpcService {
             Log.i(TAG, "Data = " + data);
         }
         catch (Exception e) {
-            Log.i(TAG, "Failed reading qr code");
-            return ;
+            Log.i(TAG, "Failed reading qr code-- " + e.toString());
+            return;
         }
     }
 }
