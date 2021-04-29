@@ -26,7 +26,7 @@ public class YourService extends KiboRpcService {
     @Override
     protected void runPlan1(){
         api.startMission();
-        // this cord comes from SampleApk
+
         move_to(11.2100, -9.8000, 4.7900, 0, 0, -0.7070f, 0.7070f);
 
         qr_move();
@@ -146,8 +146,18 @@ public class YourService extends KiboRpcService {
         Mat pic = undistort(api.getMatNavCam());
         api.flashlightControlFront(0);
 
-        Bitmap bMap = Bitmap.createBitmap(pic.width(), pic.height(), Bitmap.Config.ARGB_8888);
-        Utils.matToBitmap(pic, bMap);
+        Bitmap uncrop = Bitmap.createBitmap(pic.width(), pic.height(), Bitmap.Config.ARGB_8888);
+        Utils.matToBitmap(pic, uncrop);
+
+        Log.i(TAG, pic.width() + "");
+        Log.i(TAG, pic.height() + "");
+
+        Bitmap bMap = Bitmap.createBitmap(
+                uncrop,
+                pic.width()/2,
+                pic.width()/2,
+                (pic.width()/2) * (2/3),
+                (pic.height()/2) * (3/4));
 
         // maybe need to resize or crop or some shit that idk to make it work.
 
