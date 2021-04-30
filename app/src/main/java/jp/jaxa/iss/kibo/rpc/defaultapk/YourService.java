@@ -127,8 +127,8 @@ public class YourService extends KiboRpcService {
                 -0.216247, 0.03875, -0.010157, 0.001969, 0.0
         };
 
-        cam_Mat.put(3, 3, cam_Mat_sim);
-        dist_coeff.put(1, 5, dist_coeff_sim);
+        cam_Mat.put(0, 0, cam_Mat_sim);
+        dist_coeff.put(0, 0, dist_coeff_sim);
 
         Mat out = new Mat(NAV_MAX_WIDTH, NAV_MAX_HEIGHT, CvType.CV_8UC1);
         Imgproc.undistort(in, out, cam_Mat, dist_coeff);
