@@ -8,18 +8,22 @@ import gov.nasa.arc.astrobee.Result;
 import jp.jaxa.iss.kibo.rpc.api.KiboRpcService;
 // astrobee gs
 import gov.nasa.arc.astrobee.types.*;
-import gov.nasa.arc.astrobee.*;
 // zxing
 import com.google.zxing.BinaryBitmap;
+import com.google.zxing.DecodeHintType;
 import com.google.zxing.LuminanceSource;
+import com.google.zxing.qrcode.QRCodeReader;
 import com.google.zxing.RGBLuminanceSource;
 import com.google.zxing.common.HybridBinarizer;
-import com.google.zxing.qrcode.QRCodeReader;
 // opencv
 import org.opencv.android.Utils;
 import org.opencv.core.CvType;
 import org.opencv.core.Mat;
+import org.opencv.core.Rect;
 import org.opencv.imgproc.Imgproc;
+
+import java.util.HashMap;
+import java.util.Map;
 
 
 public class YourService extends KiboRpcService {
@@ -102,19 +106,19 @@ public class YourService extends KiboRpcService {
     }
      */
 
-    public Mat undistort(Mat in) {
+    public Mat undistort(Mat in, int width, int height) {
         final String TAG = "undistort";
+        Log.i(TAG, "Start");
 
         /* generalize this func, should just declare some const for performance
         double[][] cam_info = api.getNavCamIntrinsics();
         Log.i(TAG, "cam matrix =" + Arrays.toString(cam_info[0]));
         Log.i(TAG, "dist coeff =" + Arrays.toString(cam_info[1]));
-
         Mat cam_Mat = getCamMat(cam_info[0]);
         Mat dist_coeff = getDistCoeff(cam_info[1]);
-         */
+        */
 
-        Mat cam_Mat = new Mat(3, 3, CvType.CV_32FC1);
+        Mat cam_Mat = new Mat(3, 3 , CvType.CV_32FC1);
         Mat dist_coeff = new Mat(1, 5, CvType.CV_32FC1);
 
         final double cam_Mat_sim[] = {
@@ -127,43 +131,60 @@ public class YourService extends KiboRpcService {
                 -0.216247, 0.03875, -0.010157, 0.001969, 0.0
         };
 
-        cam_Mat.put(3, 3, cam_Mat_sim);
-        dist_coeff.put(1, 5, dist_coeff_sim);
+        cam_Mat.put(0, 0, cam_Mat_sim);
+        dist_coeff.put(0, 0, dist_coeff_sim);
 
-        Mat out = new Mat(NAV_MAX_WIDTH, NAV_MAX_HEIGHT, CvType.CV_8UC1);
+        Mat out = new Mat(width, height, CvType.CV_8UC1);
         Imgproc.undistort(in, out, cam_Mat, dist_coeff);
 
+        Log.i(TAG, "Done");
         return out;
     }
 
+    /*
+
+    public Bitmap resizeImg(Mat in, int width, int height) {
+        final String TAG = "resizeImg";
+        Log.i(TAG, "Start");
+        Size size = new Size(width, height);
+        Imgproc.resize(in, in, size);
+
+        Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+        Utils.matToBitmap(in, bitmap);
+
+        Log.i(TAG, "End");
+        return bitmap;
+    }
+    */
+
+    public Rect crop() {
+        return new Rect(590, 480, 300, 400);
+    }
+
     public BinaryBitmap getNavImg() {
-        final String TAG = "procNavImg";
+        final String TAG = "getNavImg";
 
         // img processing shit
         Log.i(TAG, "Processing img");
+        Mat pic = new Mat(api.getMatNavCam(), crop());
+        pic = undistort(pic, pic.width(), pic.height());
 
-        api.flashlightControlFront(0.025f);
-        Mat pic = undistort(api.getMatNavCam());
-        api.flashlightControlFront(0);
+        Log.i(TAG, "Declare bMap");
+        Bitmap bMap = Bitmap.createBitmap(pic.width(), pic.height(), Bitmap.Config.ARGB_8888);
 
-        Bitmap uncrop = Bitmap.createBitmap(pic.width(), pic.height(), Bitmap.Config.ARGB_8888);
-        Utils.matToBitmap(pic, uncrop);
+        Log.i(TAG, "matToBitmap");
+        Utils.matToBitmap(pic, bMap);
 
-        Log.i(TAG, pic.width() + "");
-        Log.i(TAG, pic.height() + "");
-
-        Bitmap bMap = Bitmap.createBitmap(
-                uncrop,
-                pic.width()/2,
-                pic.width()/2,
-                (pic.width()/2) * (2/3),
-                (pic.height()/2) * (3/4));
-
-        // maybe need to resize or crop or some shit that idk to make it work.
-
+        Log.i(TAG, "intArr");
         int[] intArr = new int[bMap.getWidth() * bMap.getHeight()];
+
+        Log.i(TAG, "getPixels");
         bMap.getPixels(intArr, 0, bMap.getWidth(), 0, 0, bMap.getWidth(), bMap.getHeight());
+
+        Log.i(TAG, "getPixels");
         LuminanceSource source = new RGBLuminanceSource(bMap.getWidth(), bMap.getHeight(), intArr);
+
+        Log.i(TAG, "out");
         BinaryBitmap out = new BinaryBitmap(new HybridBinarizer(source));
 
         Log.i(TAG, "Success processing img");
@@ -174,32 +195,44 @@ public class YourService extends KiboRpcService {
         final String TAG = "qr_move";
         Log.i(TAG, "Start");
 
-        String data = null;
+        String text = null;
         int counter = 0;
         BinaryBitmap bitmap = null;
 
-        while (data == null && counter < LOOP_MAX) {
-            try {
-                bitmap = getNavImg();
-            }
-            catch (Exception e) {
-                Log.i(TAG, "Failed processing img");
-                e.printStackTrace();
-                return ;
-            }
+        Map<DecodeHintType, String> hints = new HashMap<>();
+        hints.put(DecodeHintType.TRY_HARDER, "utf-8");
 
+        while (text == null && counter < LOOP_MAX) {
+            /*
+            data = cvQrReader();
+            Log.i(TAG, "Data = " + data);
+
+            counter++;
+            */
+            bitmap = getNavImg();
             try {
                 // qr code reading
                 Log.i(TAG, "Reading qr code");
-                com.google.zxing.Result result = new QRCodeReader().decode(bitmap);
-                data = result.getText();
-                Log.i(TAG, "Data = " + data);
+                com.google.zxing.Result result = new QRCodeReader().decode(bitmap, hints);
+                text = result.getText();
+                api.sendDiscoveredQR(text);
+
+                /*
+                JsonObject data  = JsonParser.parseString(text).getAsJsonObject();
+                int p = data.get("p").getAsInt();
+                double x = data.get("x").getAsDouble();
+                double y = data.get("y").getAsDouble();
+                double z = data.get("z").getAsDouble();
+                */
+
+                Log.i(TAG, "Data = " + text);
             }
             catch (Exception e) {
                 Log.i(TAG, "Failed reading qr code");
                 e.printStackTrace();
             }
-        }
 
+            counter++;
+        }
     }
 }
