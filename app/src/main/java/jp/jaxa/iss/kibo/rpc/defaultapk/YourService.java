@@ -1,6 +1,7 @@
 package jp.jaxa.iss.kibo.rpc.defaultapk;
 
 // android
+
 import android.graphics.Bitmap;
 import android.util.Log;
 // kibo rpc api
@@ -9,6 +10,7 @@ import jp.jaxa.iss.kibo.rpc.api.KiboRpcService;
 // astrobee gs
 import gov.nasa.arc.astrobee.types.*;
 // zxing
+import com.google.zxing.BarcodeFormat;
 import com.google.zxing.BinaryBitmap;
 import com.google.zxing.DecodeHintType;
 import com.google.zxing.LuminanceSource;
@@ -22,13 +24,15 @@ import org.opencv.core.Mat;
 import org.opencv.core.Rect;
 import org.opencv.imgproc.Imgproc;
 
-import java.util.HashMap;
+import java.util.ArrayList;
+import java.util.Hashtable;
+import java.util.List;
 import java.util.Map;
 
 
 public class YourService extends KiboRpcService {
     @Override
-    protected void runPlan1(){
+    protected void runPlan1() {
         api.startMission();
 
         move_to(11.2100, -9.8000, 4.7900, 0, 0, -0.7070f, 0.7070f);
@@ -40,18 +44,28 @@ public class YourService extends KiboRpcService {
     }
 
     @Override
-    protected void runPlan2(){
+    protected void runPlan2() {
         // write here your plan 2
     }
 
     @Override
-    protected void runPlan3(){
+    protected void runPlan3() {
         // write here your plan 3
     }
 
     final int LOOP_MAX = 3;
     final int NAV_MAX_WIDTH = 1280;
     final int NAV_MAX_HEIGHT = 960;
+    final double[] CAM_MATSIM = {
+            567.229305, 0.0, 659.077221,
+            0.0, 574.192915, 517.007571,
+            0.0, 0.0, 1.0
+    };
+
+    final double[] DIST_COEFFSIM = {
+            -0.216247, 0.03875, -0.010157, 0.001969, 0.0
+    };
+
 
     public void log_kinematics() {
         final String TAG = "log_position";
@@ -106,7 +120,7 @@ public class YourService extends KiboRpcService {
     }
      */
 
-    public Mat undistort(Mat in, int width, int height) {
+    public Mat undistort(Mat in) {
         final String TAG = "undistort";
         Log.i(TAG, "Start");
 
@@ -118,23 +132,14 @@ public class YourService extends KiboRpcService {
         Mat dist_coeff = getDistCoeff(cam_info[1]);
         */
 
-        Mat cam_Mat = new Mat(3, 3 , CvType.CV_32FC1);
+        Mat cam_Mat = new Mat(3, 3, CvType.CV_32FC1);
         Mat dist_coeff = new Mat(1, 5, CvType.CV_32FC1);
 
-        final double cam_Mat_sim[] = {
-                567.229305, 0.0, 659.077221,
-                0.0, 574.192915, 517.007571,
-                0.0, 0.0, 1.0
-        };
+        cam_Mat.put(0, 0, CAM_MATSIM);
+        dist_coeff.put(0, 0, DIST_COEFFSIM);
 
-        final double dist_coeff_sim[] = {
-                -0.216247, 0.03875, -0.010157, 0.001969, 0.0
-        };
-
-        cam_Mat.put(0, 0, cam_Mat_sim);
-        dist_coeff.put(0, 0, dist_coeff_sim);
-
-        Mat out = new Mat(width, height, CvType.CV_8UC1);
+        Mat out = new Mat(NAV_MAX_WIDTH, NAV_MAX_HEIGHT, CvType.CV_8UC1);
+        Log.i(TAG, "Imgrpoc.undistrot");
         Imgproc.undistort(in, out, cam_Mat, dist_coeff);
 
         Log.i(TAG, "Done");
@@ -142,7 +147,6 @@ public class YourService extends KiboRpcService {
     }
 
     /*
-
     public Bitmap resizeImg(Mat in, int width, int height) {
         final String TAG = "resizeImg";
         Log.i(TAG, "Start");
@@ -152,7 +156,7 @@ public class YourService extends KiboRpcService {
         Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
         Utils.matToBitmap(in, bitmap);
 
-        Log.i(TAG, "End");
+        Log.i(TAG, "Done");
         return bitmap;
     }
     */
@@ -166,13 +170,11 @@ public class YourService extends KiboRpcService {
 
         // img processing shit
         Log.i(TAG, "Processing img");
-        Mat pic = new Mat(api.getMatNavCam(), crop());
-        pic = undistort(pic, pic.width(), pic.height());
 
-        Log.i(TAG, "Declare bMap");
+        Mat pic = new Mat(undistort(api.getMatNavCam()), crop());
+
+        Log.i(TAG, "bMap init");
         Bitmap bMap = Bitmap.createBitmap(pic.width(), pic.height(), Bitmap.Config.ARGB_8888);
-
-        Log.i(TAG, "matToBitmap");
         Utils.matToBitmap(pic, bMap);
 
         Log.i(TAG, "intArr");
@@ -181,7 +183,7 @@ public class YourService extends KiboRpcService {
         Log.i(TAG, "getPixels");
         bMap.getPixels(intArr, 0, bMap.getWidth(), 0, 0, bMap.getWidth(), bMap.getHeight());
 
-        Log.i(TAG, "getPixels");
+        Log.i(TAG, "Luminance Source");
         LuminanceSource source = new RGBLuminanceSource(bMap.getWidth(), bMap.getHeight(), intArr);
 
         Log.i(TAG, "out");
@@ -197,20 +199,17 @@ public class YourService extends KiboRpcService {
 
         String text = null;
         int counter = 0;
-        BinaryBitmap bitmap = null;
+        BinaryBitmap bitmap;
 
-        Map<DecodeHintType, String> hints = new HashMap<>();
-        hints.put(DecodeHintType.TRY_HARDER, "utf-8");
+        Map<DecodeHintType, Object> hints = new Hashtable<>();
+        hints.put(DecodeHintType.TRY_HARDER, "");
+        List<BarcodeFormat> qr = new ArrayList<>(); qr.add(BarcodeFormat.QR_CODE);
+        hints.put(DecodeHintType.POSSIBLE_FORMATS, qr);
+        hints.put(DecodeHintType.CHARACTER_SET, "utf-8");
 
         while (text == null && counter < LOOP_MAX) {
-            /*
-            data = cvQrReader();
-            Log.i(TAG, "Data = " + data);
-
-            counter++;
-            */
-            bitmap = getNavImg();
             try {
+                bitmap = getNavImg();
                 // qr code reading
                 Log.i(TAG, "Reading qr code");
                 com.google.zxing.Result result = new QRCodeReader().decode(bitmap, hints);
@@ -226,13 +225,14 @@ public class YourService extends KiboRpcService {
                 */
 
                 Log.i(TAG, "Data = " + text);
-            }
-            catch (Exception e) {
+            } catch (Exception e) {
                 Log.i(TAG, "Failed reading qr code");
                 e.printStackTrace();
             }
 
             counter++;
         }
+
+        Log.i(TAG, "Done");
     }
 }
