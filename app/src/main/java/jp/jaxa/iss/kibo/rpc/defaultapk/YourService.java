@@ -95,42 +95,9 @@ public class YourService extends KiboRpcService {
         Log.i(TAG, "Done");
     }
 
-    /*
-    public Mat getCamMat(double[] in) {
-        Mat out = new Mat(3, 3, CvType.CV_32FC1);
-        int k = 0, j = 0;
-        for (int i = 0; i < in.length; i++) {
-            out.put(k, j, in[i]);
-
-            j++;
-            if (j == 2) {
-                k++;
-                j = 0;
-            }
-        }
-        return out;
-    }
-
-    public Mat getDistCoeff(double[] in) {
-        Mat out = new Mat(1, 5, CvType.CV_32FC1);
-        for (int i = 0; i < in.length; i++) {
-            out.put(0, i, in[i]);
-        }
-        return out;
-    }
-     */
-
     public Mat undistort(Mat in) {
         final String TAG = "undistort";
         Log.i(TAG, "Start");
-
-        /* generalize this func, should just declare some const for performance
-        double[][] cam_info = api.getNavCamIntrinsics();
-        Log.i(TAG, "cam matrix =" + Arrays.toString(cam_info[0]));
-        Log.i(TAG, "dist coeff =" + Arrays.toString(cam_info[1]));
-        Mat cam_Mat = getCamMat(cam_info[0]);
-        Mat dist_coeff = getDistCoeff(cam_info[1]);
-        */
 
         Mat cam_Mat = new Mat(3, 3, CvType.CV_32FC1);
         Mat dist_coeff = new Mat(1, 5, CvType.CV_32FC1);
@@ -146,21 +113,6 @@ public class YourService extends KiboRpcService {
         return out;
     }
 
-    /*
-    public Bitmap resizeImg(Mat in, int width, int height) {
-        final String TAG = "resizeImg";
-        Log.i(TAG, "Start");
-        Size size = new Size(width, height);
-        Imgproc.resize(in, in, size);
-
-        Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
-        Utils.matToBitmap(in, bitmap);
-
-        Log.i(TAG, "Done");
-        return bitmap;
-    }
-    */
-
     public Rect crop() {
         return new Rect(590, 480, 300, 400);
     }
@@ -171,7 +123,7 @@ public class YourService extends KiboRpcService {
         // img processing shit
         Log.i(TAG, "Processing img");
 
-        Mat pic = new Mat(undistort(api.getMatNavCam()), crop());
+        Mat pic = new Mat(api.getMatNavCam(), crop());
 
         Log.i(TAG, "bMap init");
         Bitmap bMap = Bitmap.createBitmap(pic.width(), pic.height(), Bitmap.Config.ARGB_8888);
@@ -215,14 +167,6 @@ public class YourService extends KiboRpcService {
                 com.google.zxing.Result result = new QRCodeReader().decode(bitmap, hints);
                 text = result.getText();
                 api.sendDiscoveredQR(text);
-
-                /*
-                JsonObject data  = JsonParser.parseString(text).getAsJsonObject();
-                int p = data.get("p").getAsInt();
-                double x = data.get("x").getAsDouble();
-                double y = data.get("y").getAsDouble();
-                double z = data.get("z").getAsDouble();
-                */
 
                 Log.i(TAG, "Data = " + text);
             } catch (Exception e) {
