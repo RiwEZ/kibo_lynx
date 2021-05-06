@@ -34,10 +34,8 @@ import java.util.Map;
 
 public class YourService extends KiboRpcService {
 
-
     @Override
     protected void runPlan1() {
-        init();
         api.startMission();
 
         move_to(11.2100, -9.8000, 4.7900, 0, 0, -0.7070f, 0.7070f);
@@ -64,27 +62,23 @@ public class YourService extends KiboRpcService {
         // write here your plan 3
     }
 
+    // GLOBAL CONSTANT
+
     final int LOOP_MAX = 3;
     final int NAV_MAX_WIDTH = 1280;
     final int NAV_MAX_HEIGHT = 960;
 
-    Mat cameraMat = new Mat(3, 3, CvType.CV_32FC1);
-    Mat distCoeffs = new Mat(1, 5, CvType.CV_32FC1);
+    final double[] CAM_MATSIM = {
+            567.229305, 0.0, 659.077221,
+            0.0, 574.192915, 517.007571,
+            0.0, 0.0, 1.0
+    };
 
-    private void init() {
-        final double[] CAM_MATSIM = {
-                567.229305, 0.0, 659.077221,
-                0.0, 574.192915, 517.007571,
-                0.0, 0.0, 1.0
-        };
+    final double[] DIST_COEFFSIM = {
+            -0.216247, 0.03875, -0.010157, 0.001969, 0.0
+    };
 
-        final double[] DIST_COEFFSIM = {
-                -0.216247, 0.03875, -0.010157, 0.001969, 0.0
-        };
-
-        cameraMat.put(0, 0, CAM_MATSIM);
-        distCoeffs.put(0, 0, DIST_COEFFSIM);
-    }
+    // UTILITIES
 
     private void log_kinematics() {
         final String TAG = "log_position";
@@ -93,6 +87,8 @@ public class YourService extends KiboRpcService {
         Log.i(TAG, "Position= " + p.getX() + ", " + p.getY() + ", " + p.getZ());
         Log.i(TAG, "Orientation= " + q.toString());
     }
+
+    // MOVING
 
     private void move_to(double x, double y, double z, float qx, float qy, float qz, float qw) {
         final String TAG = "move_to";
@@ -113,6 +109,8 @@ public class YourService extends KiboRpcService {
         log_kinematics();
         Log.i(TAG, "Done");
     }
+
+    // QR CODE READING
 
     private BinaryBitmap getNavImg() {
         final String TAG = "getNavImg";
@@ -188,14 +186,20 @@ public class YourService extends KiboRpcService {
         return new float[] {pattern, final_x, final_y, final_z};
     }
 
-    private Mat undistortCorner(Mat in, Mat cameraMat, Mat distCoeffs) {
+    // AR CODE READING
 
-        Mat out = new Mat(1, 8, CvType.CV_32FC2);
+    private Mat undistortCorner(Mat in, Mat cameraMat, Mat distCoeffs) {
+        final String TAG = "undistortCorner";
+
+        Mat out = new Mat(in.rows(), in.cols(), in.type());
+
+        Log.i(TAG, "in rows:" + in.rows());
+        Log.i(TAG, "in cols" + in.cols());
 
         Imgproc.undistortPoints(in, out, cameraMat, distCoeffs);
 
         return out;
-    } 
+    }
 
     private void ar_read() {
         final String TAG = "ar_read";
@@ -205,17 +209,20 @@ public class YourService extends KiboRpcService {
         List<Mat> corners = new ArrayList<>();
         Mat ids = new Mat();
 
+        Mat cameraMat = new Mat(3, 3, CvType.CV_32FC1);
+        Mat distCoeffs = new Mat(1, 5, CvType.CV_32FC1);
+
+        cameraMat.put(0, 0, CAM_MATSIM);
+        distCoeffs.put(0, 0, DIST_COEFFSIM);
 
         try {
             Log.i(TAG, "Reading AR tags");
             Aruco.detectMarkers(pic, dict, corners, ids);
 
-            for (int i = 0; i < corners.size(); i++) {
-                Mat t = undistortCorner(corners.get(i), cameraMat, distCoeffs);
-                Log.i(TAG, "corners[" + i + "]=" + corners.get(i).dump());
-                Log.i(TAG, "undistorted corners[" + i + "]=" + t.dump());
-            }
-            
+            Mat t = undistortCorner(corners.get(0), cameraMat, distCoeffs);
+            Log.i(TAG, "corners[" + 0 + "]=" + corners.get(0).dump());
+            Log.i(TAG, "undistorted corners[" + 0 + "]=" + t.dump());
+
             Log.i(TAG, "ids= " + ids.dump());
         }
         catch (Exception e) {
