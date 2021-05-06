@@ -191,12 +191,14 @@ public class YourService extends KiboRpcService {
     private Mat undistortCorner(Mat in, Mat cameraMat, Mat distCoeffs) {
         final String TAG = "undistortCorner";
 
+        // in -> rows:1, cols:4
+        Log.i(TAG, "Start");
+        Log.i(TAG, "Type:" + in.type());
+
         Mat out = new Mat(in.rows(), in.cols(), in.type());
+        Mat R = new Mat();
 
-        Log.i(TAG, "in rows:" + in.rows());
-        Log.i(TAG, "in cols" + in.cols());
-
-        Imgproc.undistortPoints(in, out, cameraMat, distCoeffs);
+        Imgproc.undistortPoints(in, out, cameraMat, distCoeffs, R, cameraMat);
 
         return out;
     }
