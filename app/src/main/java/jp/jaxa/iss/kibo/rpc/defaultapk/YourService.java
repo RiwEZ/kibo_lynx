@@ -33,8 +33,11 @@ import java.util.Map;
 
 
 public class YourService extends KiboRpcService {
+
+
     @Override
     protected void runPlan1() {
+        init();
         api.startMission();
 
         move_to(11.2100, -9.8000, 4.7900, 0, 0, -0.7070f, 0.7070f);
@@ -64,16 +67,24 @@ public class YourService extends KiboRpcService {
     final int LOOP_MAX = 3;
     final int NAV_MAX_WIDTH = 1280;
     final int NAV_MAX_HEIGHT = 960;
-    final double[] CAM_MATSIM = {
-            567.229305, 0.0, 659.077221,
-            0.0, 574.192915, 517.007571,
-            0.0, 0.0, 1.0
-    };
 
-    final double[] DIST_COEFFSIM = {
-            -0.216247, 0.03875, -0.010157, 0.001969, 0.0
-    };
+    Mat cameraMat = new Mat(3, 3, CvType.CV_32FC1);
+    Mat distCoeffs = new Mat(1, 5, CvType.CV_32FC1);
 
+    private void init() {
+        final double[] CAM_MATSIM = {
+                567.229305, 0.0, 659.077221,
+                0.0, 574.192915, 517.007571,
+                0.0, 0.0, 1.0
+        };
+
+        final double[] DIST_COEFFSIM = {
+                -0.216247, 0.03875, -0.010157, 0.001969, 0.0
+        };
+
+        cameraMat.put(0, 0, CAM_MATSIM);
+        distCoeffs.put(0, 0, DIST_COEFFSIM);
+    }
 
     private void log_kinematics() {
         final String TAG = "log_position";
@@ -103,35 +114,13 @@ public class YourService extends KiboRpcService {
         Log.i(TAG, "Done");
     }
 
-    private Mat undistort(Mat in) {
-        final String TAG = "undistort";
-        Log.i(TAG, "Start");
-
-        Mat cam_Mat = new Mat(3, 3, CvType.CV_32FC1);
-        Mat dist_coeff = new Mat(1, 5, CvType.CV_32FC1);
-
-        cam_Mat.put(0, 0, CAM_MATSIM);
-        dist_coeff.put(0, 0, DIST_COEFFSIM);
-
-        Mat out = new Mat(NAV_MAX_WIDTH, NAV_MAX_HEIGHT, CvType.CV_8UC1);
-        Log.i(TAG, "Imgrpoc.undistrot");
-        Imgproc.undistort(in, out, cam_Mat, dist_coeff);
-
-        Log.i(TAG, "Done");
-        return out;
-    }
-
-    private Rect crop() {
-        return new Rect(590, 480, 300, 400);
-    }
-
     private BinaryBitmap getNavImg() {
         final String TAG = "getNavImg";
 
         // img processing shit
         Log.i(TAG, "Processing img");
 
-        Mat pic = new Mat(api.getMatNavCam(), crop());
+        Mat pic = new Mat(api.getMatNavCam(), new Rect(590, 480, 300, 400));
 
         Bitmap bMap = Bitmap.createBitmap(pic.width(), pic.height(), Bitmap.Config.ARGB_8888);
         Utils.matToBitmap(pic, bMap);
@@ -148,7 +137,7 @@ public class YourService extends KiboRpcService {
     }
 
     private String qr_read() {
-        final String TAG = "qr_move";
+        final String TAG = "qr_read";
         Log.i(TAG, "Start");
 
         String text = null;
@@ -173,7 +162,8 @@ public class YourService extends KiboRpcService {
                 Log.i(TAG, "Done -- Success");
 
                 return text;
-            } catch (Exception e) {
+            }
+            catch (Exception e) {
                 Log.i(TAG, "Failed reading qr code");
                 e.printStackTrace();
             }
@@ -198,6 +188,15 @@ public class YourService extends KiboRpcService {
         return new float[] {pattern, final_x, final_y, final_z};
     }
 
+    private Mat undistortCorner(Mat in, Mat cameraMat, Mat distCoeffs) {
+
+        Mat out = new Mat(1, 8, CvType.CV_32FC2);
+
+        Imgproc.undistortPoints(in, out, cameraMat, distCoeffs);
+
+        return out;
+    } 
+
     private void ar_read() {
         final String TAG = "ar_read";
 
@@ -206,17 +205,23 @@ public class YourService extends KiboRpcService {
         List<Mat> corners = new ArrayList<>();
         Mat ids = new Mat();
 
+
         try {
             Log.i(TAG, "Reading AR tags");
             Aruco.detectMarkers(pic, dict, corners, ids);
 
             for (int i = 0; i < corners.size(); i++) {
+                Mat t = undistortCorner(corners.get(i), cameraMat, distCoeffs);
                 Log.i(TAG, "corners[" + i + "]=" + corners.get(i).dump());
+                Log.i(TAG, "undistorted corners[" + i + "]=" + t.dump());
             }
+            
             Log.i(TAG, "ids= " + ids.dump());
         }
         catch (Exception e) {
             Log.i(TAG, "Somethings went wrong");
         }
     }
+    
+    
 }
