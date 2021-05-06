@@ -1,15 +1,14 @@
 package jp.jaxa.iss.kibo.rpc.defaultapk;
 
-// android
-
+//
 import android.graphics.Bitmap;
 import android.util.Log;
-// kibo rpc api
+//
 import gov.nasa.arc.astrobee.Result;
 import jp.jaxa.iss.kibo.rpc.api.KiboRpcService;
-// astrobee gs
+//
 import gov.nasa.arc.astrobee.types.*;
-// zxing
+//
 import com.google.zxing.BarcodeFormat;
 import com.google.zxing.BinaryBitmap;
 import com.google.zxing.DecodeHintType;
@@ -17,13 +16,16 @@ import com.google.zxing.LuminanceSource;
 import com.google.zxing.qrcode.QRCodeReader;
 import com.google.zxing.RGBLuminanceSource;
 import com.google.zxing.common.HybridBinarizer;
-// opencv
+//
+import org.opencv.aruco.Aruco;
 import org.opencv.android.Utils;
+import org.opencv.aruco.Dictionary;
 import org.opencv.core.CvType;
 import org.opencv.core.Mat;
+import org.opencv.core.MatOfPoint2f;
 import org.opencv.core.Rect;
 import org.opencv.imgproc.Imgproc;
-
+//
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Hashtable;
@@ -32,18 +34,32 @@ import java.util.Map;
 
 
 public class YourService extends KiboRpcService {
+
+    class imagePoint {
+        float x, y;
+        imagePoint(float x, float y) {
+            this.x = x;
+            this.y = y;
+        }
+
+        String dump() {
+            return ("[" + x + ", " + y + "]");
+        }
+    }
+
     @Override
     protected void runPlan1() {
         api.startMission();
 
         move_to(11.2100, -9.8000, 4.7900, 0, 0, -0.7070f, 0.7070f);
 
-        String qrContents = qr_move();
+        String qrContents = qr_read();
         float qrData[] = interpretQRString(qrContents); // {kozPattern, x, y, z}
         Log.i("Interpret QR String", Arrays.toString(qrData));
 
         int pattern = (int)qrData[0];
         move_to(qrData[1], qrData[2], qrData[3], 0, 0, -0.707f, 0.707f);
+        ar_read();
 
         api.takeSnapshot();
         api.reportMissionCompletion();
@@ -73,7 +89,7 @@ public class YourService extends KiboRpcService {
     };
 
 
-    public void log_kinematics() {
+    private void log_kinematics() {
         final String TAG = "log_position";
         Point p = api.getTrustedRobotKinematics().getPosition();
         Quaternion q = api.getTrustedRobotKinematics().getOrientation();
@@ -81,7 +97,7 @@ public class YourService extends KiboRpcService {
         Log.i(TAG, "Orientation= " + q.toString());
     }
 
-    public void move_to(double x, double y, double z, float qx, float qy, float qz, float qw) {
+    private void move_to(double x, double y, double z, float qx, float qy, float qz, float qw) {
         final String TAG = "move_to";
         Point p = new Point(x, y, z);
         Quaternion q = new Quaternion(qx, qy, qz, qw);
@@ -101,7 +117,7 @@ public class YourService extends KiboRpcService {
         Log.i(TAG, "Done");
     }
 
-    public Mat undistort(Mat in) {
+    private Mat undistort(Mat in) {
         final String TAG = "undistort";
         Log.i(TAG, "Start");
 
@@ -119,11 +135,11 @@ public class YourService extends KiboRpcService {
         return out;
     }
 
-    public Rect crop() {
+    private Rect crop() {
         return new Rect(590, 480, 300, 400);
     }
 
-    public BinaryBitmap getNavImg() {
+    private BinaryBitmap getNavImg() {
         final String TAG = "getNavImg";
 
         // img processing shit
@@ -131,27 +147,21 @@ public class YourService extends KiboRpcService {
 
         Mat pic = new Mat(api.getMatNavCam(), crop());
 
-        Log.i(TAG, "bMap init");
         Bitmap bMap = Bitmap.createBitmap(pic.width(), pic.height(), Bitmap.Config.ARGB_8888);
         Utils.matToBitmap(pic, bMap);
 
-        Log.i(TAG, "intArr");
         int[] intArr = new int[bMap.getWidth() * bMap.getHeight()];
 
-        Log.i(TAG, "getPixels");
         bMap.getPixels(intArr, 0, bMap.getWidth(), 0, 0, bMap.getWidth(), bMap.getHeight());
 
-        Log.i(TAG, "Luminance Source");
         LuminanceSource source = new RGBLuminanceSource(bMap.getWidth(), bMap.getHeight(), intArr);
 
-        Log.i(TAG, "out");
         BinaryBitmap out = new BinaryBitmap(new HybridBinarizer(source));
 
-        Log.i(TAG, "Success processing img");
         return out;
     }
 
-    public String qr_move() {
+    private String qr_read() {
         final String TAG = "qr_move";
         Log.i(TAG, "Start");
 
@@ -200,5 +210,76 @@ public class YourService extends KiboRpcService {
         float final_z = Float.parseFloat(multi_contents[3].substring(4, multi_contents[3].length()-1));
         Log.i("Interpret QR String", "Done");
         return new float[] {pattern, final_x, final_y, final_z};
+    }
+
+    private void ar_read() {
+        final String TAG = "ar_read";
+
+        Mat pic = api.getMatNavCam();
+        Dictionary dict = Aruco.getPredefinedDictionary(Aruco.DICT_5X5_250);
+        List<Mat> corners = new ArrayList<>();
+        Mat ids = new Mat();
+
+        try {
+            Log.i(TAG, "Reading AR tags");
+            Aruco.detectMarkers(pic, dict, corners, ids);
+
+            for (int i = 0; i < corners.size(); i++) {
+                Log.i(TAG, "corners[" + i + "]=" + corners.get(i).dump());
+            }
+            Log.i(TAG, "ids= " + ids.dump());
+        }
+        catch (Exception e) {
+            Log.i(TAG, "--Fail: " + e.toString());
+            return;
+        }
+
+        imagePoint[] markersCenter = new imagePoint[4];
+        Log.i(TAG, "ids mat: " + ids.rows() + " rows, " + ids.cols() + " cols");
+        Log.i(TAG, "corners mat: " + corners.get(0).rows() + " rows, " + corners.get(0).cols() + " cols");
+
+        if(ids.rows() == 4) {
+            Log.i(TAG, "All 4 ids are found.");
+            for (int i = 0; i < 4; i++) {
+                markersCenter[i] = findCenterRect(corners.get(i));
+                Log.i(TAG, "Marker Center[" + i + "](id: " + ids.get(i, 0)[0] + ")=" + markersCenter[i].dump());
+//                Log.i(TAG, "ID: " + ids.get(i, 0)[0]);
+//                Log.i(TAG, "" + corners.get(i).get(0, 0)[0]);
+//                Log.i(TAG, "" + corners.get(i).get(0, 0)[1]);
+//                Log.i(TAG, "" + corners.get(i).get(0, 1)[0]);
+//                Log.i(TAG, "" + corners.get(i).get(0, 1)[1]);
+//                Log.i(TAG, "" + corners.get(i).get(0,2)[0]);
+//                Log.i(TAG, "" + corners.get(i).get(0,2)[1]);
+//                Log.i(TAG, "" + corners.get(i).get(0,3)[0]);
+//                Log.i(TAG, "" + corners.get(i).get(0,3)[1]);
+            }
+
+        } else {
+            Log.i(TAG, "--Fail: Only found " + ids.rows() + " markers");
+        }
+
+        imagePoint AR_Center = findCenterRect(markersCenter[0], markersCenter[1], markersCenter[2], markersCenter[3]);
+        Log.i(TAG, AR_Center.dump());
+    }
+
+    private imagePoint findCenterRect(imagePoint p1, imagePoint p2,
+                                      imagePoint p3, imagePoint p4) {
+        float xCenter = (p1.x + p2.x + p3.x + p4.x) / 4.0f;
+        float yCenter = (p1.y + p2.y + p3.y + p4.y) / 4.0f;
+
+        return new imagePoint(xCenter, yCenter);
+    }
+
+    private imagePoint findCenterRect(Mat corners) {
+        double xCenter;
+        double yCenter;
+
+        xCenter = (corners.get(0, 0)[0] + corners.get(0, 1)[0] +
+                corners.get(0, 2)[0] + corners.get(0, 3)[0]) / 4.0f;
+
+        yCenter = (corners.get(0, 0)[1] + corners.get(0, 1)[1] +
+                corners.get(0, 2)[1] + corners.get(0, 3)[1]) / 4.0f;
+
+        return new imagePoint((float)xCenter, (float)yCenter);
     }
 }
