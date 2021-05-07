@@ -188,20 +188,38 @@ public class YourService extends KiboRpcService {
 
     // AR CODE READING
 
-    private Mat undistortCorner(Mat in, Mat cameraMat, Mat distCoeffs) {
+    private Mat undistortCorner(Mat points, Mat cameraMat, Mat distCoeffs) {
         final String TAG = "undistortCorner";
 
         // in -> rows:1, cols:4
+        // in -> 1xN 2 Channel
         Log.i(TAG, "Start");
-        Log.i(TAG, "Type:" + in.type());
 
-        Mat out = new Mat(in.rows(), in.cols(), in.type());
-        Mat R = new Mat();
+        Mat out = new Mat(points.rows(), points.cols(), points.type());
+        Mat R = new Mat(3, 3, CvType.CV_32F);
 
-        Imgproc.undistortPoints(in, out, cameraMat, distCoeffs, R, cameraMat);
+        Imgproc.undistortPoints(points, out, cameraMat, distCoeffs, R, cameraMat);
 
         return out;
     }
+
+    private double[] pixelDistanceToAngle(double[] p1, double[] p2) {
+        final String TAG = "pixelDistanceToAngle";
+
+        double xDistance = p2[1] - p1[1];
+        double yDistance = p2[0] - p1[0];
+        final double anglePerPixel = 130 / Math.sqrt(Math.pow(NAV_MAX_WIDTH, 2) + Math.pow(NAV_MAX_HEIGHT, 2));
+        Log.i(TAG, "anglePerPixel=" + anglePerPixel);
+
+        double xAngle = xDistance * anglePerPixel;
+        double yAngle = yDistance * anglePerPixel;
+        Log.i(TAG, "xAngle=" + xAngle);
+        Log.i(TAG, "yAngle=" + yAngle);
+
+        double[] out = {xAngle, yAngle};
+        return out;
+    }
+
 
     private void ar_read() {
         final String TAG = "ar_read";
@@ -224,6 +242,10 @@ public class YourService extends KiboRpcService {
             Mat t = undistortCorner(corners.get(0), cameraMat, distCoeffs);
             Log.i(TAG, "corners[" + 0 + "]=" + corners.get(0).dump());
             Log.i(TAG, "undistorted corners[" + 0 + "]=" + t.dump());
+
+            double[] imgCenter = {640, 480};
+            double[] angle = pixelDistanceToAngle(imgCenter, t.get(0, 1));
+            Log.i(TAG, "angle=" + angle[0] + ", " + angle[1]);
 
             Log.i(TAG, "ids= " + ids.dump());
         }
