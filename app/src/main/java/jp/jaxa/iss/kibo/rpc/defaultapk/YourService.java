@@ -78,6 +78,18 @@ public class YourService extends KiboRpcService {
             -0.216247, 0.03875, -0.010157, 0.001969, 0.0
     };
 
+    class imagePoint {
+        float x, y;
+        imagePoint(float x, float y) {
+            this.x = x;
+            this.y = y;
+        }
+
+        String dump() {
+            return ("[" + x + ", " + y + "]");
+        }
+    }
+
     // UTILITIES
 
     private void log_kinematics() {
@@ -188,7 +200,7 @@ public class YourService extends KiboRpcService {
 
     // AR CODE READING
 
-    private Mat undistortCorner(Mat points, Mat cameraMat, Mat distCoeffs) {
+    private Mat undistortPoints(Mat points, Mat cameraMat, Mat distCoeffs) {
         final String TAG = "undistortCorner";
 
         // in -> rows:1, cols:4
@@ -196,10 +208,10 @@ public class YourService extends KiboRpcService {
         Log.i(TAG, "Start");
 
         Mat out = new Mat(points.rows(), points.cols(), points.type());
-        Mat R = new Mat(3, 3, CvType.CV_32F);
 
-        Imgproc.undistortPoints(points, out, cameraMat, distCoeffs, R, cameraMat);
+        Imgproc.undistortPoints(points, out, cameraMat, distCoeffs, new Mat(), cameraMat);
 
+        // out -> 1xN 2 Channel
         return out;
     }
 
@@ -209,6 +221,8 @@ public class YourService extends KiboRpcService {
         double xDistance = p2[1] - p1[1];
         double yDistance = p2[0] - p1[0];
         final double anglePerPixel = 130 / Math.sqrt(Math.pow(NAV_MAX_WIDTH, 2) + Math.pow(NAV_MAX_HEIGHT, 2));
+        Log.i(TAG, "xDistance=" + xDistance);
+        Log.i(TAG, "yDistance=" + yDistance);
         Log.i(TAG, "anglePerPixel=" + anglePerPixel);
 
         double xAngle = xDistance * anglePerPixel;
@@ -220,6 +234,30 @@ public class YourService extends KiboRpcService {
         return out;
     }
 
+    private Mat findCenterRect(imagePoint p1, imagePoint p2,
+                                      imagePoint p3, imagePoint p4) {
+        float xCenter = (p1.x + p2.x + p3.x + p4.x) / 4.0f;
+        float yCenter = (p1.y + p2.y + p3.y + p4.y) / 4.0f;
+
+        Mat out = new Mat(1, 1, CvType.CV_32FC2);
+        float[] point = {xCenter, yCenter};
+        out.put(0, 0, point);
+
+        return out;
+    }
+
+    private imagePoint findCenterRect(Mat corners) {
+        double xCenter;
+        double yCenter;
+
+        xCenter = (corners.get(0, 0)[0] + corners.get(0, 1)[0] +
+                corners.get(0, 2)[0] + corners.get(0, 3)[0]) / 4.0f;
+
+        yCenter = (corners.get(0, 0)[1] + corners.get(0, 1)[1] +
+                corners.get(0, 2)[1] + corners.get(0, 3)[1]) / 4.0f;
+
+        return new imagePoint((float)xCenter, (float)yCenter);
+    }
 
     private void ar_read() {
         final String TAG = "ar_read";
@@ -239,20 +277,39 @@ public class YourService extends KiboRpcService {
             Log.i(TAG, "Reading AR tags");
             Aruco.detectMarkers(pic, dict, corners, ids);
 
-            Mat t = undistortCorner(corners.get(0), cameraMat, distCoeffs);
-            Log.i(TAG, "corners[" + 0 + "]=" + corners.get(0).dump());
-            Log.i(TAG, "undistorted corners[" + 0 + "]=" + t.dump());
-
-            double[] imgCenter = {640, 480};
-            double[] angle = pixelDistanceToAngle(imgCenter, t.get(0, 1));
-            Log.i(TAG, "angle=" + angle[0] + ", " + angle[1]);
+            for (int i = 0; i < corners.size(); i++) {
+                Log.i(TAG, "corners[" + i + "]=" + corners.get(i).dump());
+            }
 
             Log.i(TAG, "ids= " + ids.dump());
         }
         catch (Exception e) {
             Log.i(TAG, "Somethings went wrong");
         }
+
+        imagePoint[] markersCenter = new imagePoint[4];
+        Log.i(TAG, "ids mat: " + ids.rows() + " rows, " + ids.cols() + " cols");
+        Log.i(TAG, "corners mat: " + corners.get(0).rows() + " rows, " + corners.get(0).cols() + " cols");
+
+        if(ids.rows() == 4) {
+            Log.i(TAG, "All 4 ids are found.");
+            for (int i = 0; i < 4; i++) {
+                markersCenter[i] = findCenterRect(corners.get(i));
+                Log.i(TAG, "Marker Center[" + i + "](id: " + ids.get(i, 0)[0] + ")=" + markersCenter[i].dump());
+            }
+
+        } else {
+            Log.i(TAG, "--Fail: Only found " + ids.rows() + " markers");
+        }
+
+        Mat AR_Center = findCenterRect(markersCenter[0], markersCenter[1], markersCenter[2], markersCenter[3]);
+        Mat undistortAr = undistortPoints(AR_Center, cameraMat, distCoeffs);
+
+        Log.i(TAG, "distorted=" + AR_Center.dump());
+        Log.i(TAG, "undistort=" + undistortAr.dump());
+
+        double[] center = {640, 490};
+        pixelDistanceToAngle(center, undistortAr.get(0, 1));
+
     }
-    
-    
 }
