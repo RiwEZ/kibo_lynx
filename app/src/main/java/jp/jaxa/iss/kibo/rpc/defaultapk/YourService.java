@@ -253,6 +253,9 @@ public class YourService extends KiboRpcService {
     private Quaternion eulerAngleToQuaternion(double xAngle, double yAngle, double zAngle) {
         final String TAG = "Convert euler angle to quaternion";
 
+        xAngle = Math.toRadians(xAngle);
+        yAngle = Math.toRadians(yAngle);
+        zAngle = Math.toRadians(zAngle);
         double c1 = Math.cos(yAngle/2);
         double c2 = Math.cos(zAngle/2);
         double c3 = Math.cos(xAngle/2);
