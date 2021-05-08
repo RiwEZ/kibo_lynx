@@ -34,21 +34,31 @@ import java.util.Map;
 
 public class YourService extends KiboRpcService {
 
+
     @Override
     protected void runPlan1() {
         api.startMission();
 
-        move_to(11.2100, -9.8000, 4.7900, 0, 0, -0.7070f, 0.7070f);
-
+        move_to(11.2100, -9.8000, 4.7900, new Quaternion(0, 0, -0.7070f, 0.7070f));
         String qrContents = qr_read();
         float qrData[] = interpretQRString(qrContents); // {kozPattern, x, y, z}
         Log.i("Interpret QR String", Arrays.toString(qrData));
 
         int pattern = (int)qrData[0];
-        move_to(qrData[1], qrData[2], qrData[3], 0, 0, -0.707f, 0.707f);
-        ar_read();
+        move_to(qrData[1], qrData[2], qrData[3], new Quaternion(0, 0, -0.707f, 0.707f));
 
+        Mat AR_Center = ar_read();
+
+        Mat undistortAr = undistortPoints(AR_Center);
+        double[] center = {640, 490};
+        double[] angleToTurn = pixelDistanceToAngle(center, undistortAr.get(0, 0));
+        Quaternion imageQ = eulerAngleToQuaternion(angleToTurn[0], 0, angleToTurn[1]);
+        Quaternion qToTurn  = new Quaternion(imageQ.getX(), imageQ.getY(), -0.707f + imageQ.getZ(), 0.707f + imageQ.getW());
+        move_to(qrData[1], qrData[2], qrData[3], qToTurn);
+
+        api.laserControl(true);
         api.takeSnapshot();
+        api.laserControl(false);
         api.reportMissionCompletion();
     }
 
@@ -102,10 +112,9 @@ public class YourService extends KiboRpcService {
 
     // MOVING
 
-    private void move_to(double x, double y, double z, float qx, float qy, float qz, float qw) {
+    private void move_to(double x, double y, double z, Quaternion q) {
         final String TAG = "move_to";
         Point p = new Point(x, y, z);
-        Quaternion q = new Quaternion(qx, qy, qz, qw);
 
         int counter = 0;
         Result result;
@@ -200,17 +209,24 @@ public class YourService extends KiboRpcService {
 
     // AR CODE READING
 
-    private Mat undistortPoints(Mat points, Mat cameraMat, Mat distCoeffs) {
+    private Mat undistortPoints(Mat points) {
         final String TAG = "undistortCorner";
 
         // in -> rows:1, cols:4
         // in -> 1xN 2 Channel
         Log.i(TAG, "Start");
 
+        Mat cameraMat = new Mat(3, 3, CvType.CV_32FC1);
+        Mat distCoeffs = new Mat(1, 5, CvType.CV_32FC1);
+
+        cameraMat.put(0, 0, CAM_MATSIM);
+        distCoeffs.put(0, 0, DIST_COEFFSIM);
+
         Mat out = new Mat(points.rows(), points.cols(), points.type());
 
         Imgproc.undistortPoints(points, out, cameraMat, distCoeffs, new Mat(), cameraMat);
 
+        Log.i(TAG, "undistort=" + out.dump());
         // out -> 1xN 2 Channel
         return out;
     }
@@ -218,8 +234,8 @@ public class YourService extends KiboRpcService {
     private double[] pixelDistanceToAngle(double[] p1, double[] p2) {
         final String TAG = "pixelDistanceToAngle";
 
-        double xDistance = p2[1] - p1[1];
-        double yDistance = p2[0] - p1[0];
+        double xDistance = p2[0] - p1[0];
+        double yDistance = p2[1] - p1[1];
         final double anglePerPixel = 130 / Math.sqrt(Math.pow(NAV_MAX_WIDTH, 2) + Math.pow(NAV_MAX_HEIGHT, 2));
         Log.i(TAG, "xDistance=" + xDistance);
         Log.i(TAG, "yDistance=" + yDistance);
@@ -232,6 +248,25 @@ public class YourService extends KiboRpcService {
 
         double[] out = {xAngle, yAngle};
         return out;
+    }
+
+    private Quaternion eulerAngleToQuaternion(double xAngle, double yAngle, double zAngle) {
+        final String TAG = "Convert euler angle to quaternion";
+
+        double c1 = Math.cos(yAngle/2);
+        double c2 = Math.cos(zAngle/2);
+        double c3 = Math.cos(xAngle/2);
+        double s1 = Math.sin(yAngle/2);
+        double s2 = Math.sin(zAngle/2);
+        double s3 = Math.sin(xAngle/2);
+
+        double w = c1*c2*c3 - s1*s2*s3;
+        double x = s1*s2*c3 + c1*c2*s3;
+        double y = s1*c2*c3 + c1*s2*s3;
+        double z = c1*s2*c3 - s1*c2*s3;
+
+        Log.i(TAG, " x:" + x + " y:" + y + " z:" + z + " w:" + w);
+        return new Quaternion((float)x, (float) y, (float)z, (float)w);
     }
 
     private Mat findCenterRect(imagePoint p1, imagePoint p2,
@@ -259,19 +294,13 @@ public class YourService extends KiboRpcService {
         return new imagePoint((float)xCenter, (float)yCenter);
     }
 
-    private void ar_read() {
+    private Mat ar_read() {
         final String TAG = "ar_read";
 
         Mat pic = api.getMatNavCam();
         Dictionary dict = Aruco.getPredefinedDictionary(Aruco.DICT_5X5_250);
         List<Mat> corners = new ArrayList<>();
         Mat ids = new Mat();
-
-        Mat cameraMat = new Mat(3, 3, CvType.CV_32FC1);
-        Mat distCoeffs = new Mat(1, 5, CvType.CV_32FC1);
-
-        cameraMat.put(0, 0, CAM_MATSIM);
-        distCoeffs.put(0, 0, DIST_COEFFSIM);
 
         try {
             Log.i(TAG, "Reading AR tags");
@@ -303,13 +332,7 @@ public class YourService extends KiboRpcService {
         }
 
         Mat AR_Center = findCenterRect(markersCenter[0], markersCenter[1], markersCenter[2], markersCenter[3]);
-        Mat undistortAr = undistortPoints(AR_Center, cameraMat, distCoeffs);
-
         Log.i(TAG, "distorted=" + AR_Center.dump());
-        Log.i(TAG, "undistort=" + undistortAr.dump());
-
-        double[] center = {640, 490};
-        pixelDistanceToAngle(center, undistortAr.get(0, 1));
-
+        return  AR_Center;
     }
 }
