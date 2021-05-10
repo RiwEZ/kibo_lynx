@@ -45,6 +45,11 @@ public class YourService extends KiboRpcService {
         Log.i("Interpret QR String", Arrays.toString(qrData));
 
         int pattern = (int)qrData[0];
+
+        if (pattern == 7) {
+            move_pattern7(qrData[1], qrData[3]);
+        }
+
         move_to(qrData[1], qrData[2], qrData[3], new Quaternion(0, 0, -0.707f, 0.707f));
 
         Mat AR_Center = ar_read();
@@ -338,4 +343,51 @@ public class YourService extends KiboRpcService {
         Log.i(TAG, "distorted=" + AR_Center.dump());
         return  AR_Center;
     }
+
+    // KOZ AVOID BOI
+
+    final float A_PrimeToTarget = 0.8f;
+    final float AstrobeeWidth = 0.32f;
+    final float KIZ_edgeR = 11.55f;
+
+    private void move_pattern7(float A_PrimeX, float A_PrimeZ) {
+        final String TAG = "move_pattern7";
+
+        Quaternion q = new Quaternion(0,0,-0.707f,0.707f);
+        final float[] target = {A_PrimeX - A_PrimeToTarget, A_PrimeZ - A_PrimeToTarget};
+
+        final float KOZ_edgeR = target[0] - 0.3f;
+        final float KOZ_edgeB = target[1] + 0.3f;
+
+        float x;
+        final float z = KOZ_edgeB + 0.16f + 0.1f;
+
+        x = KOZ_edgeR + 0.16f + 0.1f;
+        if (((KIZ_edgeR - KOZ_edgeR) > (AstrobeeWidth + 0.1)) && x < KIZ_edgeR) {
+            Log.i(TAG, "go right x =" + x);
+        }
+        else {
+            // KOZ_edgeR - 0.6f = KOZ_edgeL
+            x = KOZ_edgeR - 0.6f + 0.16f + 0.1f;
+            Log.i(TAG, "go left x =" + x);
+        }
+
+        Log.i(TAG, "target x =" + target[0]);
+        Log.i(TAG, "target z =" + target[1]);
+
+        move_to(x, -9.8000, 4.7900, q);
+        move_to(x, -9.8000, z, q);
+    }
+
+    private void move_pattern56(float A_PrimeX, float A_PrimeZ) {
+        Quaternion q = new Quaternion(0,0,-0.707f,0.707f);
+
+        final float[] target = {A_PrimeX + A_PrimeToTarget, A_PrimeZ - A_PrimeToTarget};
+
+        final float KOZ_edgeL = target[0] + 0.3f;
+        final float KOZ_edgeB = target[1] + 0.3f;
+
+    }
+
+
 }
