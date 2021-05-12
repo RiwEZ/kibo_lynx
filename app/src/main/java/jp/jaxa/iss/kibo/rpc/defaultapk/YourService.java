@@ -49,6 +49,9 @@ public class YourService extends KiboRpcService {
         if (pattern == 7) {
             move_pattern7(qrData[1], qrData[3]);
         }
+        if (pattern == 5 || pattern == 6) {
+            move_pattern56(qrData[1], qrData[3]);
+        }
 
         move_to(qrData[1], qrData[2], qrData[3], new Quaternion(0, 0, -0.707f, 0.707f));
 
@@ -346,47 +349,94 @@ public class YourService extends KiboRpcService {
 
     // KOZ AVOID BOI
 
-    final float A_PrimeToTarget = 0.8f;
+    final float A_PrimeToTarget = 0.08f;
     final float AstrobeeWidth = 0.32f;
     final float KIZ_edgeR = 11.55f;
+    final float KIZ_edgeL = 10.3f;
+    final float KIZ_edgeB = 5.57f;
 
     private void move_pattern7(float A_PrimeX, float A_PrimeZ) {
         final String TAG = "move_pattern7";
+        long start = System.currentTimeMillis();
 
-        Quaternion q = new Quaternion(0,0,-0.707f,0.707f);
+        final Quaternion q = new Quaternion(0,0,-0.707f,0.707f);
         final float[] target = {A_PrimeX - A_PrimeToTarget, A_PrimeZ - A_PrimeToTarget};
 
-        final float KOZ_edgeR = target[0] - 0.3f;
+        final float KOZ_edgeR = target[0] + 0.3f;
+        final float KOZ_edgeL = target[0] - 0.3f;
         final float KOZ_edgeB = target[1] + 0.3f;
+        final float KOZ_edgeT = target[1] - 0.3f;
 
-        float x;
+        float x = KOZ_edgeR + 0.16f + 0.1f;
         final float z = KOZ_edgeB + 0.16f + 0.1f;
 
-        x = KOZ_edgeR + 0.16f + 0.1f;
         if (((KIZ_edgeR - KOZ_edgeR) > (AstrobeeWidth + 0.1)) && x < KIZ_edgeR) {
-            Log.i(TAG, "go right x =" + x);
+            x = x + 0.16f;
+            Log.i(TAG, "go_right_x=" + x);
         }
         else {
-            // KOZ_edgeR - 0.6f = KOZ_edgeL
-            x = KOZ_edgeR - 0.6f + 0.16f + 0.1f;
-            Log.i(TAG, "go left x =" + x);
+            x = KOZ_edgeL - 0.16f - 0.1f - 0.16f;
+            Log.i(TAG, "go_left_x=" + x);
         }
 
-        Log.i(TAG, "target x =" + target[0]);
-        Log.i(TAG, "target z =" + target[1]);
+        Log.i(TAG, "go_bot_z=" + z);
 
-        move_to(x, -9.8000, 4.7900, q);
+        Log.i(TAG, "KOZ_edgeR=" + KOZ_edgeR);
+        Log.i(TAG, "KOZ_edgeL=" + KOZ_edgeL);
+        Log.i(TAG, "KOZ_edgeT=" + KOZ_edgeT);
+        Log.i(TAG, "KOZ_edgeB=" + KOZ_edgeB);
+
+        Log.i(TAG, "target_x=" + target[0]);
+        Log.i(TAG, "target_z=" + target[1]);
+
+        move_to(x, -9.8000, KOZ_edgeT - 0.16, q);
         move_to(x, -9.8000, z, q);
+        move_to(x + 0.6f, -9.8000, z, q);
+        move_to(A_PrimeX, -9.8000, A_PrimeZ, q);
+
+        long end = System.currentTimeMillis();
+        Log.i(TAG, "ElapsedTime=" + (end - start));
     }
 
     private void move_pattern56(float A_PrimeX, float A_PrimeZ) {
+        final String TAG = "move_pattern56";
+        long start = System.currentTimeMillis();
+
         Quaternion q = new Quaternion(0,0,-0.707f,0.707f);
 
         final float[] target = {A_PrimeX + A_PrimeToTarget, A_PrimeZ - A_PrimeToTarget};
 
-        final float KOZ_edgeL = target[0] + 0.3f;
+        final float KOZ_edgeL = target[0] - 0.3f;
         final float KOZ_edgeB = target[1] + 0.3f;
+        final float KOZ_edgeT = target[1] - 0.3f;
 
+        float x = KOZ_edgeL - 0.16f;
+        float z = KOZ_edgeB - 0.15f;
+
+        if (x < KIZ_edgeL) {
+            x = KIZ_edgeL + 0.16f;
+        }
+
+        if (z > KIZ_edgeB) {
+            z = KIZ_edgeB - 0.16f;
+        }
+
+        move_to(x, -9.8000, KOZ_edgeT, q);
+        move_to(x, -9.8000, A_PrimeZ, q);
+        move_to(A_PrimeX, -9.8000, A_PrimeZ, q);
+
+        Log.i(TAG, "KOZ_edgeL=" + KOZ_edgeL);
+        Log.i(TAG, "KOZ_edgeT=" + KOZ_edgeT);
+        Log.i(TAG, "KOZ_edgeB=" + KOZ_edgeB);
+
+        Log.i(TAG, "target_x=" + target[0]);
+        Log.i(TAG, "target_z=" + target[1]);
+
+        Log.i(TAG, "x=" + x);
+        Log.i(TAG, "z=" + z);
+
+        long end = System.currentTimeMillis();
+        Log.i(TAG, "ElapsedTime=" + (end - start));
     }
 
 
