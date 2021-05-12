@@ -34,7 +34,6 @@ import java.util.Map;
 
 public class YourService extends KiboRpcService {
 
-
     @Override
     protected void runPlan1() {
         api.startMission();
@@ -56,10 +55,11 @@ public class YourService extends KiboRpcService {
 
         Mat undistortAr = undistortPoints(AR_Center);
         double[] center = {640, 490};
-        double[] angleToTurn = pixelDistanceToAngle(center, undistortAr.get(0, 0));
-        Quaternion imageQ = eulerAngleToQuaternion(angleToTurn[0], 0, angleToTurn[1]);
-        Quaternion qToTurn  = new Quaternion(imageQ.getX(), imageQ.getY(), -0.707f + imageQ.getZ(), 0.707f + imageQ.getW());
+        double[] angleToTurn = pixelDistanceToAngle(undistortAr.get(0, 0), center);
+        Quaternion imageQ = eulerAngleToQuaternion(angleToTurn[1], 0, angleToTurn[0]);
+        Quaternion qToTurn  = combineQuaternion(imageQ, new Quaternion(0, 0, -0.707f, 0.707f));
         move_to(qrData[1], qrData[2], qrData[3], qToTurn);
+        log_kinematics();
 
         api.laserControl(true);
         api.takeSnapshot();
@@ -236,11 +236,11 @@ public class YourService extends KiboRpcService {
         return out;
     }
 
-    private double[] pixelDistanceToAngle(double[] p1, double[] p2) {
+    private double[] pixelDistanceToAngle(double[] target, double[] ref) {
         final String TAG = "pixelDistanceToAngle";
 
-        double xDistance = p2[0] - p1[0];
-        double yDistance = p2[1] - p1[1];
+        double xDistance = ref[0] - target[0];
+        double yDistance = ref[1] - target[1];
         final double anglePerPixel = 130 / Math.sqrt(Math.pow(NAV_MAX_WIDTH, 2) + Math.pow(NAV_MAX_HEIGHT, 2));
         Log.i(TAG, "xDistance=" + xDistance);
         Log.i(TAG, "yDistance=" + yDistance);
@@ -275,6 +275,22 @@ public class YourService extends KiboRpcService {
 
         Log.i(TAG, " x:" + x + " y:" + y + " z:" + z + " w:" + w);
         return new Quaternion((float)x, (float) y, (float)z, (float)w);
+    }
+
+    // For multiply quaternion, Apply q2 to q1
+    // q1 * q2= a*e - b*f - c*g- d*h + i (b*e + a*f + c*h - d*g) + j (a*g - b*h + c*e + d*f) + k (a*h + b*g - c*f + d*e)
+    private Quaternion combineQuaternion(Quaternion newOrientation, Quaternion oldOrientation) {
+        String TAG = "combineQuaternion";
+        double x =  newOrientation.getX() * oldOrientation.getW() + newOrientation.getY() * oldOrientation.getZ()
+                - newOrientation.getZ() * oldOrientation.getY() + newOrientation.getW() * oldOrientation.getX();
+        double y = -newOrientation.getX() * oldOrientation.getZ() + newOrientation.getY() * oldOrientation.getW()
+                + newOrientation.getZ() * oldOrientation.getX() + newOrientation.getW() * oldOrientation.getY();
+        double z =  newOrientation.getX() * oldOrientation.getY() - newOrientation.getY() * oldOrientation.getX()
+                + newOrientation.getZ() * oldOrientation.getW() + newOrientation.getW() * oldOrientation.getZ();
+        double w = -newOrientation.getX() * oldOrientation.getX() - newOrientation.getY() * oldOrientation.getY()
+                - newOrientation.getZ() * oldOrientation.getZ() + newOrientation.getW() * oldOrientation.getW();
+        Log.i(TAG, " x:" + x + " y:" + y + " z:" + z + " w:" + w);
+        return new Quaternion((float)x, (float)y, (float)z, (float)w);
     }
 
     private Mat findCenterRect(imagePoint p1, imagePoint p2,
