@@ -39,6 +39,7 @@ public class YourService extends KiboRpcService {
         api.startMission();
 
         move_to(11.2100, -9.8000, 4.7900, new Quaternion(0, 0, -0.7070f, 0.7070f));
+
         String qrContents = qr_read();
         float qrData[] = interpretQRString(qrContents); // {kozPattern, x, y, z}
         Log.i("Interpret QR String", Arrays.toString(qrData));
@@ -67,6 +68,9 @@ public class YourService extends KiboRpcService {
         api.laserControl(true);
         api.takeSnapshot();
         api.laserControl(false);
+
+        move_toB(pattern, qrData[1], qrData[3]);
+
         api.reportMissionCompletion();
     }
 
@@ -139,6 +143,23 @@ public class YourService extends KiboRpcService {
         Log.i(TAG, "Done");
     }
 
+    private void move_to(Point p, Quaternion q) {
+        final String TAG = "move_to";
+        int counter = 0;
+        Result result;
+
+        Log.i(TAG, "Start");
+
+        do {
+            result = api.moveTo(p, q, true);
+            counter++;
+        } while (!result.hasSucceeded() && (counter < LOOP_MAX));
+
+        // info
+        log_kinematics();
+        Log.i(TAG, "Done");
+    }
+
     // QR CODE READING
 
     private BinaryBitmap getNavImg() {
@@ -165,7 +186,7 @@ public class YourService extends KiboRpcService {
 
     private String qr_read() {
         final String TAG = "qr_read";
-        Log.i(TAG, "Start");
+        long start = System.currentTimeMillis();
 
         String text = null;
         int counter = 0;
@@ -188,6 +209,8 @@ public class YourService extends KiboRpcService {
                 Log.i(TAG, "Data = " + text);
                 Log.i(TAG, "Done -- Success");
 
+                long end = System.currentTimeMillis();
+                Log.i(TAG, "qr_read time :" + (end - start));
                 return text;
             }
             catch (Exception e) {
@@ -324,13 +347,13 @@ public class YourService extends KiboRpcService {
     private Mat ar_read() {
         final String TAG = "ar_read";
 
-        Mat pic = api.getMatNavCam();
         Dictionary dict = Aruco.getPredefinedDictionary(Aruco.DICT_5X5_250);
         List<Mat> corners = new ArrayList<>();
         Mat ids = new Mat();
 
         try {
             Log.i(TAG, "Reading AR tags");
+            Mat pic = api.getMatNavCam();
             Aruco.detectMarkers(pic, dict, corners, ids);
 
             for (int i = 0; i < corners.size(); i++) {
@@ -366,7 +389,6 @@ public class YourService extends KiboRpcService {
     // KOZ AVOID BOI
 
     final float A_PrimeToTarget = 0.08f;
-    final float AstrobeeWidth = 0.32f;
     final float KIZ_edgeR = 11.55f;
     final float KIZ_edgeL = 10.3f;
     final float KIZ_edgeB = 5.57f;
@@ -379,35 +401,22 @@ public class YourService extends KiboRpcService {
         final float[] target = {A_PrimeX - A_PrimeToTarget, A_PrimeZ - A_PrimeToTarget};
 
         final float KOZ_edgeR = target[0] + 0.3f;
-        final float KOZ_edgeL = target[0] - 0.3f;
-        final float KOZ_edgeB = target[1] + 0.3f;
         final float KOZ_edgeT = target[1] - 0.3f;
 
         float x = KOZ_edgeR + 0.16f + 0.1f;
-        final float z = KOZ_edgeB + 0.16f + 0.1f;
 
-        if (((KIZ_edgeR - KOZ_edgeR) > (AstrobeeWidth + 0.1)) && x < KIZ_edgeR) {
-            x = x + 0.16f;
-            Log.i(TAG, "go_right_x=" + x);
+        if (x > KIZ_edgeR) {
+            x = KIZ_edgeR - 0.01f;
         }
-        else {
-            x = KOZ_edgeL - 0.16f - 0.1f - 0.16f;
-            Log.i(TAG, "go_left_x=" + x);
-        }
-
-        Log.i(TAG, "go_bot_z=" + z);
 
         Log.i(TAG, "KOZ_edgeR=" + KOZ_edgeR);
-        Log.i(TAG, "KOZ_edgeL=" + KOZ_edgeL);
         Log.i(TAG, "KOZ_edgeT=" + KOZ_edgeT);
-        Log.i(TAG, "KOZ_edgeB=" + KOZ_edgeB);
 
         Log.i(TAG, "target_x=" + target[0]);
         Log.i(TAG, "target_z=" + target[1]);
 
-        move_to(x, -9.8000, KOZ_edgeT - 0.16, q);
-        move_to(x, -9.8000, z, q);
-        move_to(x + 0.6f, -9.8000, z, q);
+        move_to(x, -9.8000, KOZ_edgeT, q);
+        move_to(x, -9.8000, A_PrimeZ, q);
         move_to(A_PrimeX, -9.8000, A_PrimeZ, q);
 
         long end = System.currentTimeMillis();
@@ -455,5 +464,58 @@ public class YourService extends KiboRpcService {
         Log.i(TAG, "ElapsedTime=" + (end - start));
     }
 
+
+    private void move_toB(int pattern, float A_PrimeX, float A_PrimeZ) {
+        final String TAG = "move_toB";
+        long start = System.currentTimeMillis();
+        Quaternion q = new Quaternion(0,0,-0.707f,0.707f);
+
+        Point PointB = new Point(10.6000, -8.0000, 4.5000);
+
+        if (pattern == 2 || pattern == 3 || pattern == 4) {
+            move_to(10.6000, -8.6500, PointB.getZ(), q);
+            move_to(PointB, q);
+        }
+
+        if (pattern == 1|| pattern == 8) {
+            final float[] target = {A_PrimeX - A_PrimeToTarget, A_PrimeZ + A_PrimeToTarget};
+            final float KOZ_edgeT = target[1] - 0.3f;
+            float KOZ_edgeR = target[0] - 0.075f;
+
+            if (pattern == 8) {
+                KOZ_edgeR = target[0];
+            }
+
+            move_to(KOZ_edgeR - 0.16, -9.4000, KOZ_edgeT - 0.16, q);
+            move_to(10.6000 , -8.6500, PointB.getZ(), q);
+            move_to(PointB, q);
+        }
+
+        if (pattern == 5 || pattern == 6) {
+            move_to(10.6000, -8.6500, A_PrimeZ, q);
+            move_to(PointB, q);
+        }
+
+        if (pattern == 7) {
+            final float[] target = {A_PrimeX - A_PrimeToTarget, A_PrimeZ - A_PrimeToTarget};
+
+            final float KOZ_edgeR = target[0] + 0.3f;
+            final float KOZ_edgeT = target[1] - 0.3f;
+
+            float x = KOZ_edgeR + 0.16f + 0.1f;
+
+            if (x > KIZ_edgeR) {
+                x = KIZ_edgeR - 0.01f;
+            }
+
+            move_to(x, -9.8000, A_PrimeZ, q);
+            move_to(x, -9.0000, KOZ_edgeT - 0.16, q);
+            move_to(10.6000, -9.0000, A_PrimeZ, q);
+            move_to(PointB, q);
+        }
+
+        long end = System.currentTimeMillis();
+        Log.i(TAG, "ElapsedTime=" + (end - start));
+    }
 
 }
