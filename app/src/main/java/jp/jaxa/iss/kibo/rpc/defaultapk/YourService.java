@@ -238,7 +238,49 @@ public class YourService extends KiboRpcService {
         return new float[] {pattern, final_x, final_y, final_z};
     }
 
-    // AR CODE READING
+    // AR CODE READING AND RELATED MATHS OPERATION
+
+    private Mat ar_read() {
+        final String TAG = "ar_read";
+
+        Mat pic = api.getMatNavCam();
+        Dictionary dict = Aruco.getPredefinedDictionary(Aruco.DICT_5X5_250);
+        List<Mat> corners = new ArrayList<>();
+        Mat ids = new Mat();
+
+        try {
+            Log.i(TAG, "Reading AR tags");
+            Aruco.detectMarkers(pic, dict, corners, ids);
+
+            for (int i = 0; i < corners.size(); i++) {
+                Log.i(TAG, "corners[" + i + "]=" + corners.get(i).dump());
+            }
+
+            Log.i(TAG, "ids= " + ids.dump());
+        }
+        catch (Exception e) {
+            Log.i(TAG, "Somethings went wrong");
+        }
+
+        imagePoint[] markersCenter = new imagePoint[4];
+        Log.i(TAG, "ids mat: " + ids.rows() + " rows, " + ids.cols() + " cols");
+        Log.i(TAG, "corners mat: " + corners.get(0).rows() + " rows, " + corners.get(0).cols() + " cols");
+
+        if(ids.rows() == 4) {
+            Log.i(TAG, "All 4 ids are found.");
+            for (int i = 0; i < 4; i++) {
+                markersCenter[i] = findCenterRect(corners.get(i));
+                Log.i(TAG, "Marker Center[" + i + "](id: " + ids.get(i, 0)[0] + ")=" + markersCenter[i].dump());
+            }
+
+        } else {
+            Log.i(TAG, "--Fail: Only found " + ids.rows() + " markers");
+        }
+
+        Mat AR_Center = findCenterRect(markersCenter[0], markersCenter[1], markersCenter[2], markersCenter[3]);
+        Log.i(TAG, "distorted=" + AR_Center.dump());
+        return  AR_Center;
+    }
 
     private Mat undistortPoints(Mat points) {
         final String TAG = "undistortCorner";
@@ -261,6 +303,33 @@ public class YourService extends KiboRpcService {
         // out -> 1xN 2 Channel
         return out;
     }
+
+    private Mat findCenterRect(imagePoint p1, imagePoint p2,
+                               imagePoint p3, imagePoint p4) {
+        float xCenter = (p1.x + p2.x + p3.x + p4.x) / 4.0f;
+        float yCenter = (p1.y + p2.y + p3.y + p4.y) / 4.0f;
+
+        Mat out = new Mat(1, 1, CvType.CV_32FC2);
+        float[] point = {xCenter, yCenter};
+        out.put(0, 0, point);
+
+        return out;
+    }
+
+    private imagePoint findCenterRect(Mat corners) {
+        double xCenter;
+        double yCenter;
+
+        xCenter = (corners.get(0, 0)[0] + corners.get(0, 1)[0] +
+                corners.get(0, 2)[0] + corners.get(0, 3)[0]) / 4.0f;
+
+        yCenter = (corners.get(0, 0)[1] + corners.get(0, 1)[1] +
+                corners.get(0, 2)[1] + corners.get(0, 3)[1]) / 4.0f;
+
+        return new imagePoint((float)xCenter, (float)yCenter);
+    }
+
+    // OTHER MATHS OPERATION
 
     private double[] pixelDistanceToAngle(double[] target, double[] ref) {
         final String TAG = "pixelDistanceToAngle";
@@ -303,7 +372,7 @@ public class YourService extends KiboRpcService {
         return new Quaternion((float)x, (float) y, (float)z, (float)w);
     }
 
-    // For multiply quaternion, Apply q2 to q1
+    // For multiply quaternion, Apply q2(new) to q1(old)
     // q1 * q2= a*e - b*f - c*g- d*h + i (b*e + a*f + c*h - d*g) + j (a*g - b*h + c*e + d*f) + k (a*h + b*g - c*f + d*e)
     private Quaternion combineQuaternion(Quaternion newOrientation, Quaternion oldOrientation) {
         String TAG = "combineQuaternion";
@@ -317,73 +386,6 @@ public class YourService extends KiboRpcService {
                 - newOrientation.getZ() * oldOrientation.getZ() + newOrientation.getW() * oldOrientation.getW();
         Log.i(TAG, " x:" + x + " y:" + y + " z:" + z + " w:" + w);
         return new Quaternion((float)x, (float)y, (float)z, (float)w);
-    }
-
-    private Mat findCenterRect(imagePoint p1, imagePoint p2,
-                                      imagePoint p3, imagePoint p4) {
-        float xCenter = (p1.x + p2.x + p3.x + p4.x) / 4.0f;
-        float yCenter = (p1.y + p2.y + p3.y + p4.y) / 4.0f;
-
-        Mat out = new Mat(1, 1, CvType.CV_32FC2);
-        float[] point = {xCenter, yCenter};
-        out.put(0, 0, point);
-
-        return out;
-    }
-
-    private imagePoint findCenterRect(Mat corners) {
-        double xCenter;
-        double yCenter;
-
-        xCenter = (corners.get(0, 0)[0] + corners.get(0, 1)[0] +
-                corners.get(0, 2)[0] + corners.get(0, 3)[0]) / 4.0f;
-
-        yCenter = (corners.get(0, 0)[1] + corners.get(0, 1)[1] +
-                corners.get(0, 2)[1] + corners.get(0, 3)[1]) / 4.0f;
-
-        return new imagePoint((float)xCenter, (float)yCenter);
-    }
-
-    private Mat ar_read() {
-        final String TAG = "ar_read";
-
-        Dictionary dict = Aruco.getPredefinedDictionary(Aruco.DICT_5X5_250);
-        List<Mat> corners = new ArrayList<>();
-        Mat ids = new Mat();
-
-        try {
-            Log.i(TAG, "Reading AR tags");
-            Mat pic = api.getMatNavCam();
-            Aruco.detectMarkers(pic, dict, corners, ids);
-
-            for (int i = 0; i < corners.size(); i++) {
-                Log.i(TAG, "corners[" + i + "]=" + corners.get(i).dump());
-            }
-
-            Log.i(TAG, "ids= " + ids.dump());
-        }
-        catch (Exception e) {
-            Log.i(TAG, "Somethings went wrong");
-        }
-
-        imagePoint[] markersCenter = new imagePoint[4];
-        Log.i(TAG, "ids mat: " + ids.rows() + " rows, " + ids.cols() + " cols");
-        Log.i(TAG, "corners mat: " + corners.get(0).rows() + " rows, " + corners.get(0).cols() + " cols");
-
-        if(ids.rows() == 4) {
-            Log.i(TAG, "All 4 ids are found.");
-            for (int i = 0; i < 4; i++) {
-                markersCenter[i] = findCenterRect(corners.get(i));
-                Log.i(TAG, "Marker Center[" + i + "](id: " + ids.get(i, 0)[0] + ")=" + markersCenter[i].dump());
-            }
-
-        } else {
-            Log.i(TAG, "--Fail: Only found " + ids.rows() + " markers");
-        }
-
-        Mat AR_Center = findCenterRect(markersCenter[0], markersCenter[1], markersCenter[2], markersCenter[3]);
-        Log.i(TAG, "distorted=" + AR_Center.dump());
-        return  AR_Center;
     }
 
     // KOZ AVOID BOI
@@ -463,7 +465,6 @@ public class YourService extends KiboRpcService {
         long end = System.currentTimeMillis();
         Log.i(TAG, "ElapsedTime=" + (end - start));
     }
-
 
     private void move_toB(int pattern, float A_PrimeX, float A_PrimeZ) {
         final String TAG = "move_toB";
