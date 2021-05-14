@@ -510,8 +510,8 @@ public class YourService extends KiboRpcService {
             }
 
             move_to(x, -9.8000, A_PrimeZ, q);
-            move_to(x, -9.0000, KOZ_edgeT - 0.16, q);
-            move_to(10.6000, -9.0000, A_PrimeZ, q);
+            move_to(x, -9.0000, PointB.getZ(), q);
+            move_to(10.6000, -9.0000, PointB.getZ(), q);
             move_to(PointB, q);
         }
 
