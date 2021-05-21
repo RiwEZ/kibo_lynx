@@ -19,6 +19,7 @@ import com.google.zxing.common.HybridBinarizer;
 //
 import org.opencv.aruco.Aruco;
 import org.opencv.android.Utils;
+import org.opencv.aruco.DetectorParameters;
 import org.opencv.aruco.Dictionary;
 import org.opencv.core.CvType;
 import org.opencv.core.Mat;
@@ -60,7 +61,7 @@ public class YourService extends KiboRpcService {
         Mat undistortAr = undistortPoints(AR_Center);
         double[] center = {640, 490};
         double[] angleToTurn = pixelDistanceToAngle(undistortAr.get(0, 0), center);
-        Quaternion imageQ = eulerAngleToQuaternion(angleToTurn[1], 0, angleToTurn[0]);
+        Quaternion imageQ = eulerAngleToQuaternion(-angleToTurn[1], 0, angleToTurn[0]);
         Quaternion qToTurn  = combineQuaternion(imageQ, new Quaternion(0, 0, -0.707f, 0.707f));
         move_to(qrData[1], qrData[2], qrData[3], qToTurn);
         log_kinematics();
@@ -139,7 +140,7 @@ public class YourService extends KiboRpcService {
         } while (!result.hasSucceeded() && (counter < LOOP_MAX));
 
         // info
-        log_kinematics();
+        //log_kinematics();
         Log.i(TAG, "Done");
     }
 
@@ -193,12 +194,15 @@ public class YourService extends KiboRpcService {
         BinaryBitmap bitmap;
 
         Map<DecodeHintType, Object> hints = new Hashtable<>();
-        hints.put(DecodeHintType.TRY_HARDER, "");
         List<BarcodeFormat> qr = new ArrayList<>(); qr.add(BarcodeFormat.QR_CODE);
         hints.put(DecodeHintType.POSSIBLE_FORMATS, qr);
         hints.put(DecodeHintType.CHARACTER_SET, "utf-8");
 
+        BinaryBitmap temp = getNavImg();
         while (text == null && counter < LOOP_MAX) {
+            if (counter == 1) {
+                hints.put(DecodeHintType.TRY_HARDER, "");
+            }
             try {
                 bitmap = getNavImg();
                 // qr code reading
@@ -242,29 +246,46 @@ public class YourService extends KiboRpcService {
 
     private Mat ar_read() {
         final String TAG = "ar_read";
+        long start = System.currentTimeMillis();
 
-        Mat pic = api.getMatNavCam();
         Dictionary dict = Aruco.getPredefinedDictionary(Aruco.DICT_5X5_250);
         List<Mat> corners = new ArrayList<>();
         Mat ids = new Mat();
+        DetectorParameters dummyParams = DetectorParameters.create();
 
-        try {
-            Log.i(TAG, "Reading AR tags");
-            Aruco.detectMarkers(pic, dict, corners, ids);
+        Mat temp = api.getMatNavCam();
+        for (int i = 0; i < 2; i++) {
+            Mat pic = api.getMatNavCam();
+            Log.i(TAG, "Reading AR tags:" + i);
 
-            for (int i = 0; i < corners.size(); i++) {
-                Log.i(TAG, "corners[" + i + "]=" + corners.get(i).dump());
+            if (i == 0) {
+                // set to high value to make it break
+                dummyParams.set_adaptiveThreshWinSizeMin(30);
+                dummyParams.set_adaptiveThreshWinSizeMax(30);
+            }
+            else {
+                // set back to default
+                dummyParams.set_adaptiveThreshWinSizeMin(3);
+                dummyParams.set_adaptiveThreshWinSizeMax(23);
             }
 
-            Log.i(TAG, "ids= " + ids.dump());
-        }
-        catch (Exception e) {
-            Log.i(TAG, "Somethings went wrong");
+            try {
+                Aruco.detectMarkers(pic, dict, corners, ids, dummyParams);
+            }
+            catch (Exception e) {}
         }
 
+        // LOG
+        for (int j = 0; j < corners.size(); j++) {
+            Log.i(TAG, "corners[" + j + "]=" + corners.get(j).dump());
+        }
+        Log.i(TAG, "ids= " + ids.dump());
+
+        long end = System.currentTimeMillis();
+        Log.i(TAG, "ar_read_time=" + (end-start));
+        //
+
         imagePoint[] markersCenter = new imagePoint[4];
-        Log.i(TAG, "ids mat: " + ids.rows() + " rows, " + ids.cols() + " cols");
-        Log.i(TAG, "corners mat: " + corners.get(0).rows() + " rows, " + corners.get(0).cols() + " cols");
 
         if(ids.rows() == 4) {
             Log.i(TAG, "All 4 ids are found.");
@@ -279,6 +300,9 @@ public class YourService extends KiboRpcService {
 
         Mat AR_Center = findCenterRect(markersCenter[0], markersCenter[1], markersCenter[2], markersCenter[3]);
         Log.i(TAG, "distorted=" + AR_Center.dump());
+
+        end = System.currentTimeMillis();
+        Log.i(TAG, "ar_read+process_time=" + (end-start));
         return  AR_Center;
     }
 
