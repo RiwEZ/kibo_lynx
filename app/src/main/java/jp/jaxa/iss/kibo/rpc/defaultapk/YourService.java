@@ -19,7 +19,6 @@ import com.google.zxing.common.HybridBinarizer;
 //
 import org.opencv.aruco.Aruco;
 import org.opencv.android.Utils;
-import org.opencv.aruco.DetectorParameters;
 import org.opencv.aruco.Dictionary;
 import org.opencv.core.CvType;
 import org.opencv.core.Mat;
@@ -59,8 +58,8 @@ public class YourService extends KiboRpcService {
         Mat AR_Center = ar_read();
 
         Mat undistortAr = undistortPoints(AR_Center);
-        double[] center = {640, 490};
-        double[] angleToTurn = pixelDistanceToAngle(undistortAr.get(0, 0), center);
+        double[] center = {711, 455};
+        double[] angleToTurn = pixelDistanceToAngle(undistortAr.get(0, 0), center, pattern);
         Quaternion imageQ = eulerAngleToQuaternion(angleToTurn[1], 0, angleToTurn[0]);
         Quaternion qToTurn  = combineQuaternion(imageQ, new Quaternion(0, 0, -0.707f, 0.707f));
         move_to(qrData[1], qrData[2], qrData[3], qToTurn);
@@ -157,7 +156,7 @@ public class YourService extends KiboRpcService {
         } while (!result.hasSucceeded() && (counter < LOOP_MAX));
 
         // info
-        log_kinematics();
+        //log_kinematics();
         Log.i(TAG, "Done");
     }
 
@@ -197,11 +196,11 @@ public class YourService extends KiboRpcService {
         List<BarcodeFormat> qr = new ArrayList<>(); qr.add(BarcodeFormat.QR_CODE);
         hints.put(DecodeHintType.POSSIBLE_FORMATS, qr);
         hints.put(DecodeHintType.CHARACTER_SET, "utf-8");
-        //hints.put(DecodeHintType.TRY_HARDER, "");
 
         BinaryBitmap temp = getNavImg();
         while (text == null && counter < LOOP_MAX) {
             try {
+                Thread.sleep(10000);
                 bitmap = getNavImg();
 
                 // qr code reading
@@ -245,39 +244,27 @@ public class YourService extends KiboRpcService {
 
     private Mat ar_read() {
         final String TAG = "ar_read";
-        long start = System.currentTimeMillis();
+        final long start = System.currentTimeMillis();
 
         Dictionary dict = Aruco.getPredefinedDictionary(Aruco.DICT_5X5_250);
         List<Mat> corners = new ArrayList<>();
         Mat ids = new Mat();
 
-        for (int i = 0; i < 2; i++) {
-            long s = System.currentTimeMillis();
-            Log.i(TAG, "Reading AR tags:" + i);
-            Mat pic;
-
-            if (i == 0) {
-                // set to high value to make it break
-                pic = new Mat(api.getMatNavCam(), new Rect(1, 1, 1, 1));
-            }
-            else {
-                // set back to default
-                pic = api.getMatNavCam();
-            }
-
+        try {
+            Thread.sleep(12500);
+            Mat pic = api.getMatNavCam();
             Aruco.detectMarkers(pic, dict, corners, ids);
-
-            // LOG
-            for (int j = 0; j < corners.size(); j++) {
-                Log.i(TAG, "corners[" + j + "]=" + corners.get(j).dump());
-            }
-            Log.i(TAG, "ids= " + ids.dump());
-            long e = System.currentTimeMillis();
-            Log.i(TAG, "ar_read loop [" + i + "] time:" + (s-e));
-            //
         }
+        catch (Exception e) {}
+
+        // LOG
+        for (int j = 0; j < corners.size(); j++) {
+            Log.i(TAG, "corners[" + j + "]=" + corners.get(j).dump());
+        }
+        Log.i(TAG, "ids= " + ids.dump());
         long end = System.currentTimeMillis();
         Log.i(TAG, "ar_read_time=" + (end-start));
+        //
 
         imagePoint[] markersCenter = new imagePoint[4];
 
@@ -349,10 +336,10 @@ public class YourService extends KiboRpcService {
 
     // OTHER MATHS OPERATION
 
-    private double[] pixelDistanceToAngle(double[] target, double[] ref) {
+    private double[] pixelDistanceToAngle(double[] target, double[] ref, int pattern) {
         final String TAG = "pixelDistanceToAngle";
 
-        double xDistance = ref[0] - target[0];
+        double xDistance = target[0] - ref[0];
         double yDistance = ref[1] - target[1];
         final double anglePerPixel = 130 / Math.sqrt(Math.pow(NAV_MAX_WIDTH, 2) + Math.pow(NAV_MAX_HEIGHT, 2));
         Log.i(TAG, "xDistance=" + xDistance);
@@ -361,6 +348,16 @@ public class YourService extends KiboRpcService {
 
         double xAngle = xDistance * anglePerPixel;
         double yAngle = yDistance * anglePerPixel;
+
+        if (pattern == 7) {
+            xAngle -= 1.5;
+        }
+
+        if (pattern == 1 || pattern == 8) {
+            xAngle -= 1.52;
+            yAngle -= 0.7;
+        }
+
         Log.i(TAG, "xAngle=" + xAngle);
         Log.i(TAG, "yAngle=" + yAngle);
 
@@ -408,7 +405,7 @@ public class YourService extends KiboRpcService {
 
     // KOZ AVOID BOI
 
-    final float A_PrimeToTarget = 0.08f;
+    final float A_PrimeToTarget = 0.08f; // worst case?
     final float KIZ_edgeR = 11.55f;
     final float KIZ_edgeL = 10.3f;
     final float KIZ_edgeB = 5.57f;
@@ -466,10 +463,6 @@ public class YourService extends KiboRpcService {
             z = KIZ_edgeB - 0.16f;
         }
 
-        move_to(x, -9.8000, KOZ_edgeT, q);
-        move_to(x, -9.8000, A_PrimeZ, q);
-        move_to(A_PrimeX, -9.8000, A_PrimeZ, q);
-
         Log.i(TAG, "KOZ_edgeL=" + KOZ_edgeL);
         Log.i(TAG, "KOZ_edgeT=" + KOZ_edgeT);
         Log.i(TAG, "KOZ_edgeB=" + KOZ_edgeB);
@@ -479,6 +472,10 @@ public class YourService extends KiboRpcService {
 
         Log.i(TAG, "x=" + x);
         Log.i(TAG, "z=" + z);
+
+        move_to(x, -9.8000, KOZ_edgeT, q);
+        move_to(x, -9.8000, A_PrimeZ, q);
+        move_to(A_PrimeX, -9.8000, A_PrimeZ, q);
 
         long end = System.currentTimeMillis();
         Log.i(TAG, "ElapsedTime=" + (end - start));
@@ -502,10 +499,12 @@ public class YourService extends KiboRpcService {
             float KOZ_edgeR = target[0] - 0.075f;
 
             if (pattern == 8) {
-                KOZ_edgeR = target[0];
+                move_to(A_PrimeX, -9.8000, KOZ_edgeT - 0.32, q);
+            }
+            else {
+                move_to(KOZ_edgeR - 0.16, -9.4000, KOZ_edgeT - 0.16, q);
             }
 
-            move_to(KOZ_edgeR - 0.16, -9.4000, KOZ_edgeT - 0.16, q);
             move_to(10.6000 , -8.6500, PointB.getZ(), q);
             move_to(PointB, q);
         }
@@ -519,7 +518,6 @@ public class YourService extends KiboRpcService {
             final float[] target = {A_PrimeX - A_PrimeToTarget, A_PrimeZ - A_PrimeToTarget};
 
             final float KOZ_edgeR = target[0] + 0.3f;
-            final float KOZ_edgeT = target[1] - 0.3f;
 
             float x = KOZ_edgeR + 0.16f + 0.1f;
 
