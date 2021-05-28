@@ -80,7 +80,7 @@ public class YourService extends KiboRpcService {
 
         boolean cleared = false;
         while (!cleared) {
-            api.reportMissionCompletion();
+            cleared = api.reportMissionCompletion();
         }
     }
 
