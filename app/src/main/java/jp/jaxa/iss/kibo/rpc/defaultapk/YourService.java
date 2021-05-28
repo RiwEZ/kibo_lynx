@@ -191,7 +191,7 @@ public class YourService extends KiboRpcService {
         return out;
     }
 
-    private String QRreader(BinaryBitmap in) {
+    private String QRreader() {
         final String TAG = "QRreader";
         Log.i(TAG, "Start");
 
@@ -200,26 +200,34 @@ public class YourService extends KiboRpcService {
         hints.put(DecodeHintType.POSSIBLE_FORMATS, qr);
         hints.put(DecodeHintType.CHARACTER_SET, "utf-8");
 
-        try {
-            long start = System.currentTimeMillis();
-            com.google.zxing.Result data = new QRCodeReader().decode(in, hints);
+        String text = null;
+        int counter = 0;
+        while (text == null && counter < LOOP_MAX) {
+            try {
+                long start = System.currentTimeMillis();
+                BinaryBitmap bitmap = getNavImg();
+                com.google.zxing.Result data = new QRCodeReader().decode(bitmap, hints);
 
-            ResultPoint[] p = data.getResultPoints();
-            for (int i = 0; i < p.length; i++) {
-                Log.i(TAG, "ResultPoint[" + i + "]=" + p[i].toString());
-                if (p[i] instanceof FinderPattern) {
-                    Log.i(TAG, "estimatedModuleSize = " + ((FinderPattern) p[i]).getEstimatedModuleSize());
+                ResultPoint[] p = data.getResultPoints();
+                for (int i = 0; i < p.length; i++) {
+                    Log.i(TAG, "ResultPoint[" + i + "]=" + p[i].toString());
+                    if (p[i] instanceof FinderPattern) {
+                        Log.i(TAG, "estimatedModuleSize = " + ((FinderPattern) p[i]).getEstimatedModuleSize());
+                    }
                 }
+
+                text = data.getText();
+                long end = System.currentTimeMillis();
+                Log.i(TAG, "ElapsedTime[" + counter + "]=" + (end-start));
+                return text;
             }
-
-            long end = System.currentTimeMillis();
-            Log.i(TAG, "ElapsedTime=" + (end-start));
-            return data.getText();
-        }
-        catch (Exception e) {
-            e.printStackTrace();
+            catch (Exception e) {
+                e.printStackTrace();
+            }
+            counter++;
         }
 
+        Log.i(TAG, "Failed");
         return null;
     }
 
@@ -227,37 +235,24 @@ public class YourService extends KiboRpcService {
         final String TAG = "qr_read";
         long start = System.currentTimeMillis();
 
-        String text = null;
-        int counter = 0;
-        BinaryBitmap bitmap;
-
-        while (text == null && counter < LOOP_MAX) {
-            try {
-                Thread.sleep(14000);
-                bitmap = getNavImg();
-
-                // qr code reading
-                Log.i(TAG, "Reading qr code");
-                text = QRreader(bitmap);
-                api.sendDiscoveredQR(text);
-
-                Log.i(TAG, "Data = " + text);
-                Log.i(TAG, "Done -- Success");
-
-                long end = System.currentTimeMillis();
-                Log.i(TAG, "qr_read time :" + (end - start));
-                return text;
-            }
-            catch (Exception e) {
-                Log.i(TAG, "Failed reading qr code");
-                e.printStackTrace();
-            }
-
-            counter++;
+        try {
+            Thread.sleep(14000);
+        }
+        catch (Exception e) {
+            e.printStackTrace();
         }
 
-        Log.i(TAG, "Done with failure");
-        return null;
+        // qr code reading
+        Log.i(TAG, "Reading qr code");
+        String text = QRreader();
+        api.sendDiscoveredQR(text);
+
+        Log.i(TAG, "Data = " + text);
+        Log.i(TAG, "Done -- Success");
+
+        long end = System.currentTimeMillis();
+        Log.i(TAG, "qr_read time :" + (end - start));
+        return text;
     }
 
     private float[] interpretQRString(String qrContents) {
