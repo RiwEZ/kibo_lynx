@@ -66,15 +66,9 @@ public class YourService extends KiboRpcService {
         move_to(qrData[1], qrData[2], qrData[3], qToTurn);
         log_kinematics();
 
-        try {
-            api.laserControl(true);
-            Thread.sleep(1000);
-            api.laserControl(false);
-        }
-        catch (Exception e) {
-            e.printStackTrace();
-        }
+        api.laserControl(true);
         api.takeSnapshot();
+        api.laserControl(false);
 
         move_toB(pattern, qrData[1], qrData[3]);
 
@@ -280,9 +274,16 @@ public class YourService extends KiboRpcService {
 
         try {
             Thread.sleep(14000);
-            Mat pic = new Mat(api.getMatNavCam(), new Rect(320, 240, 640, 480));
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        int counter = 0;
+        while (ids.rows() != 4 && counter != LOOP_MAX) {
+            Mat pic = new Mat(api.getMatNavCam(), new Rect(320, 240, 640, 500));
             Aruco.detectMarkers(pic, dict, corners, ids);
-        } catch (Exception e) {}
+            counter++;
+        }
 
         // LOG
         for (int j = 0; j < corners.size(); j++) {
