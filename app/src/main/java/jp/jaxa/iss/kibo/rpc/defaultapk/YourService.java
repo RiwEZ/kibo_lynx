@@ -13,12 +13,13 @@ import com.google.zxing.BarcodeFormat;
 import com.google.zxing.BinaryBitmap;
 import com.google.zxing.DecodeHintType;
 import com.google.zxing.LuminanceSource;
+import com.google.zxing.ResultPoint;
 import com.google.zxing.qrcode.QRCodeReader;
 import com.google.zxing.RGBLuminanceSource;
 import com.google.zxing.common.HybridBinarizer;
+import com.google.zxing.qrcode.detector.FinderPattern;
 //
 import org.opencv.aruco.Aruco;
-import org.opencv.android.Utils;
 import org.opencv.aruco.Dictionary;
 import org.opencv.core.CvType;
 import org.opencv.core.Mat;
@@ -58,20 +59,29 @@ public class YourService extends KiboRpcService {
         Mat AR_Center = ar_read();
 
         Mat undistortAr = undistortPoints(AR_Center);
-        double[] center = {711, 455};
-        double[] angleToTurn = pixelDistanceToAngle(undistortAr.get(0, 0), center, pattern);
+        double[] laser = {711, 455};
+        double[] angleToTurn = pixelDistanceToAngle(undistortAr.get(0, 0), laser, pattern);
         Quaternion imageQ = eulerAngleToQuaternion(angleToTurn[1], 0, angleToTurn[0]);
         Quaternion qToTurn  = combineQuaternion(imageQ, new Quaternion(0, 0, -0.707f, 0.707f));
         move_to(qrData[1], qrData[2], qrData[3], qToTurn);
         log_kinematics();
 
-        api.laserControl(true);
+        try {
+            api.laserControl(true);
+            Thread.sleep(1000);
+            api.laserControl(false);
+        }
+        catch (Exception e) {
+            e.printStackTrace();
+        }
         api.takeSnapshot();
-        api.laserControl(false);
 
         move_toB(pattern, qrData[1], qrData[3]);
 
-        api.reportMissionCompletion();
+        boolean cleared = false;
+        while (!cleared) {
+            api.reportMissionCompletion();
+        }
     }
 
     @Override
@@ -164,24 +174,53 @@ public class YourService extends KiboRpcService {
 
     private BinaryBitmap getNavImg() {
         final String TAG = "getNavImg";
+        long start = System.currentTimeMillis();
 
         // img processing shit
         Log.i(TAG, "Processing img");
 
-        Mat pic = new Mat(api.getMatNavCam(), new Rect(600, 570, 250, 250));
-
-        Bitmap bMap = Bitmap.createBitmap(pic.width(), pic.height(), Bitmap.Config.ARGB_8888);
-        Utils.matToBitmap(pic, bMap);
-
+        Bitmap bMap = Bitmap.createBitmap(api.getBitmapNavCam(), 600, 570, 250, 250);
         int[] intArr = new int[bMap.getWidth() * bMap.getHeight()];
-
         bMap.getPixels(intArr, 0, bMap.getWidth(), 0, 0, bMap.getWidth(), bMap.getHeight());
 
         LuminanceSource source = new RGBLuminanceSource(bMap.getWidth(), bMap.getHeight(), intArr);
-
         BinaryBitmap out = new BinaryBitmap(new HybridBinarizer(source));
 
+        long end = System.currentTimeMillis();
+        Log.i(TAG, "ElapsedTime=" + (end-start));
         return out;
+    }
+
+    private String QRreader(BinaryBitmap in) {
+        final String TAG = "QRreader";
+        Log.i(TAG, "Start");
+
+        Map<DecodeHintType, Object> hints = new Hashtable<>();
+        List<BarcodeFormat> qr = new ArrayList<>(); qr.add(BarcodeFormat.QR_CODE);
+        hints.put(DecodeHintType.POSSIBLE_FORMATS, qr);
+        hints.put(DecodeHintType.CHARACTER_SET, "utf-8");
+
+        try {
+            long start = System.currentTimeMillis();
+            com.google.zxing.Result data = new QRCodeReader().decode(in, hints);
+
+            ResultPoint[] p = data.getResultPoints();
+            for (int i = 0; i < p.length; i++) {
+                Log.i(TAG, "ResultPoint[" + i + "]=" + p[i].toString());
+                if (p[i] instanceof FinderPattern) {
+                    Log.i(TAG, "estimatedModuleSize = " + ((FinderPattern) p[i]).getEstimatedModuleSize());
+                }
+            }
+
+            long end = System.currentTimeMillis();
+            Log.i(TAG, "ElapsedTime=" + (end-start));
+            return data.getText();
+        }
+        catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        return null;
     }
 
     private String qr_read() {
@@ -192,22 +231,16 @@ public class YourService extends KiboRpcService {
         int counter = 0;
         BinaryBitmap bitmap;
 
-        Map<DecodeHintType, Object> hints = new Hashtable<>();
-        List<BarcodeFormat> qr = new ArrayList<>(); qr.add(BarcodeFormat.QR_CODE);
-        hints.put(DecodeHintType.POSSIBLE_FORMATS, qr);
-        hints.put(DecodeHintType.CHARACTER_SET, "utf-8");
-
-        BinaryBitmap temp = getNavImg();
         while (text == null && counter < LOOP_MAX) {
             try {
-                Thread.sleep(10000);
+                Thread.sleep(14000);
                 bitmap = getNavImg();
 
                 // qr code reading
                 Log.i(TAG, "Reading qr code");
-                com.google.zxing.Result result = new QRCodeReader().decode(bitmap, hints);
-                text = result.getText();
+                text = QRreader(bitmap);
                 api.sendDiscoveredQR(text);
+
                 Log.i(TAG, "Data = " + text);
                 Log.i(TAG, "Done -- Success");
 
@@ -251,15 +284,23 @@ public class YourService extends KiboRpcService {
         Mat ids = new Mat();
 
         try {
-            Thread.sleep(12500);
-            Mat pic = api.getMatNavCam();
+            Thread.sleep(14000);
+            Mat pic = new Mat(api.getMatNavCam(), new Rect(320, 240, 640, 480));
             Aruco.detectMarkers(pic, dict, corners, ids);
-        }
-        catch (Exception e) {}
+        } catch (Exception e) {}
 
         // LOG
         for (int j = 0; j < corners.size(); j++) {
-            Log.i(TAG, "corners[" + j + "]=" + corners.get(j).dump());
+            Mat temp = corners.get(j);
+
+            for (int z = 0; z < temp.cols(); z++) {
+                double[] t = temp.get(0, z);
+                t[0] = t[0] + 320;
+                t[1] = t[1] + 240;
+                temp.put(0, z, t);
+            }
+
+            Log.i(TAG, "corners[" + j + "]=" + temp.dump());
         }
         Log.i(TAG, "ids= " + ids.dump());
         long end = System.currentTimeMillis();
@@ -339,9 +380,10 @@ public class YourService extends KiboRpcService {
     private double[] pixelDistanceToAngle(double[] target, double[] ref, int pattern) {
         final String TAG = "pixelDistanceToAngle";
 
-        double xDistance = target[0] - ref[0];
-        double yDistance = ref[1] - target[1];
-        final double anglePerPixel = 130 / Math.sqrt(Math.pow(NAV_MAX_WIDTH, 2) + Math.pow(NAV_MAX_HEIGHT, 2));
+        final double xDistance = target[0] - ref[0];
+        final double yDistance = ref[1] - target[1];
+        //final double anglePerPixel = 130 / Math.sqrt(Math.pow(NAV_MAX_WIDTH, 2) + Math.pow(NAV_MAX_HEIGHT, 2));
+        final double anglePerPixel = 0.08125;
         Log.i(TAG, "xDistance=" + xDistance);
         Log.i(TAG, "yDistance=" + yDistance);
         Log.i(TAG, "anglePerPixel=" + anglePerPixel);
@@ -350,12 +392,12 @@ public class YourService extends KiboRpcService {
         double yAngle = yDistance * anglePerPixel;
 
         if (pattern == 7) {
-            xAngle -= 1.5;
+            xAngle -= 1.65;
         }
 
         if (pattern == 1 || pattern == 8) {
-            xAngle -= 1.52;
-            yAngle -= 0.7;
+            xAngle -= 1.6;
+            yAngle -= 0.71;
         }
 
         Log.i(TAG, "xAngle=" + xAngle);
@@ -416,21 +458,16 @@ public class YourService extends KiboRpcService {
 
         final Quaternion q = new Quaternion(0,0,-0.707f,0.707f);
         final float[] target = {A_PrimeX - A_PrimeToTarget, A_PrimeZ - A_PrimeToTarget};
-
-        final float KOZ_edgeR = target[0] + 0.3f;
         final float KOZ_edgeT = target[1] - 0.3f;
 
-        float x = KOZ_edgeR + 0.16f + 0.1f;
+        final float x = KIZ_edgeR - 0.01f;
 
-        if (x > KIZ_edgeR) {
-            x = KIZ_edgeR - 0.01f;
-        }
-
-        Log.i(TAG, "KOZ_edgeR=" + KOZ_edgeR);
         Log.i(TAG, "KOZ_edgeT=" + KOZ_edgeT);
 
         Log.i(TAG, "target_x=" + target[0]);
         Log.i(TAG, "target_z=" + target[1]);
+
+        Log.i(TAG, "x=" + x);
 
         move_to(x, -9.8000, KOZ_edgeT, q);
         move_to(x, -9.8000, A_PrimeZ, q);
@@ -515,15 +552,7 @@ public class YourService extends KiboRpcService {
         }
 
         if (pattern == 7) {
-            final float[] target = {A_PrimeX - A_PrimeToTarget, A_PrimeZ - A_PrimeToTarget};
-
-            final float KOZ_edgeR = target[0] + 0.3f;
-
-            float x = KOZ_edgeR + 0.16f + 0.1f;
-
-            if (x > KIZ_edgeR) {
-                x = KIZ_edgeR - 0.01f;
-            }
+            final float x = KIZ_edgeR - 0.01f;
 
             move_to(x, -9.8000, A_PrimeZ, q);
             move_to(x, -9.0000, PointB.getZ(), q);
