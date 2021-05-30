@@ -39,7 +39,11 @@ public class YourService extends KiboRpcService {
     protected void runPlan1() {
         api.startMission();
 
-        move_to(11.2100, -9.8000, 4.7900, new Quaternion(0, 0, -0.7070f, 0.7070f));
+        Quaternion q = combineQuaternion(
+                eulerAngleToQuaternion(-19.525, 0, 6.25625)
+                , new Quaternion(0, 0, -0.707f, 0.707f));
+
+        move_to(11.2100, -9.8000, 4.7900, q);
 
         String qrContents = qr_read();
         float qrData[] = interpretQRString(qrContents); // {kozPattern, x, y, z}
@@ -173,7 +177,7 @@ public class YourService extends KiboRpcService {
         // img processing shit
         Log.i(TAG, "Processing img");
 
-        Bitmap bMap = Bitmap.createBitmap(api.getBitmapNavCam(), 600, 570, 250, 250);
+        Bitmap bMap = Bitmap.createBitmap(api.getBitmapNavCam(), 526, 378, 250, 250);
         int[] intArr = new int[bMap.getWidth() * bMap.getHeight()];
         bMap.getPixels(intArr, 0, bMap.getWidth(), 0, 0, bMap.getWidth(), bMap.getHeight());
 
@@ -193,6 +197,11 @@ public class YourService extends KiboRpcService {
         List<BarcodeFormat> qr = new ArrayList<>(); qr.add(BarcodeFormat.QR_CODE);
         hints.put(DecodeHintType.POSSIBLE_FORMATS, qr);
         hints.put(DecodeHintType.CHARACTER_SET, "utf-8");
+
+        try {
+            Thread.sleep(15000);
+        }
+        catch (Exception e) {}
 
         String text = null;
         int counter = 0;
@@ -228,13 +237,6 @@ public class YourService extends KiboRpcService {
     private String qr_read() {
         final String TAG = "qr_read";
         long start = System.currentTimeMillis();
-
-        try {
-            Thread.sleep(14000);
-        }
-        catch (Exception e) {
-            e.printStackTrace();
-        }
 
         // qr code reading
         Log.i(TAG, "Reading qr code");
@@ -273,13 +275,14 @@ public class YourService extends KiboRpcService {
         Mat ids = new Mat();
 
         try {
-            Thread.sleep(14000);
+            Thread.sleep(15000);
         } catch (Exception e) {
             e.printStackTrace();
         }
 
         int counter = 0;
-        while (ids.rows() != 4 && counter != LOOP_MAX) {
+        Log.i(TAG, "Reading AR");
+        while (ids.rows() != 4 && counter < LOOP_MAX) {
             Mat pic = new Mat(api.getMatNavCam(), new Rect(320, 240, 640, 500));
             Aruco.detectMarkers(pic, dict, corners, ids);
             counter++;
@@ -393,7 +396,11 @@ public class YourService extends KiboRpcService {
 
         if (pattern == 1 || pattern == 8) {
             xAngle -= 1.6;
-            yAngle -= 0.71;
+            yAngle -= 1.3;
+        }
+
+        if (pattern == 2 || pattern == 3 || pattern == 4) {
+            yAngle -= 1.3;
         }
 
         Log.i(TAG, "xAngle=" + xAngle);
