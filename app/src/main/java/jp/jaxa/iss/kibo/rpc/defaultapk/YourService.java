@@ -39,36 +39,34 @@ public class YourService extends KiboRpcService {
     protected void runPlan1() {
         api.startMission();
 
-        Quaternion q = combineQuaternion(
-                eulerAngleToQuaternion(-19.525, 0, 6.25625)
-                , new Quaternion(0, 0, -0.707f, 0.707f));
+        final Quaternion q = new Quaternion(-0.11316165328025818f ,-0.12624533474445343f ,-0.6577022671699524f ,0.7337453961372375f);
 
         move_to(11.2100, -9.8000, 4.7900, q);
 
-        String qrContents = qr_read();
-        float qrData[] = interpretQRString(qrContents); // {kozPattern, x, y, z}
+        final String qrContents = qr_read();
+        final float qrData[] = interpretQRString(qrContents); // {kozPattern, x, y, z}
         Log.i("Interpret QR String", Arrays.toString(qrData));
 
-        int pattern = (int)qrData[0];
+        final int pattern = (int)qrData[0];
 
         if (pattern == 7) {
             move_pattern7(qrData[1], qrData[3]);
         }
-        if (pattern == 5 || pattern == 6) {
-            move_pattern56(qrData[1], qrData[3]);
+        else if (pattern == 5 || pattern == 6) {
+            move_pattern56(qrData[1] - 0.05f, qrData[3]);
+        }
+        else {
+            move_to(qrData[1], qrData[2], qrData[3], new Quaternion(0, 0, -0.707f, 0.707f));
         }
 
-        move_to(qrData[1], qrData[2], qrData[3], new Quaternion(0, 0, -0.707f, 0.707f));
+        final Mat AR_Center = ar_read();
 
-        Mat AR_Center = ar_read();
-
-        Mat undistortAr = undistortPoints(AR_Center);
-        double[] laser = {711, 455};
-        double[] angleToTurn = pixelDistanceToAngle(undistortAr.get(0, 0), laser, pattern);
-        Quaternion imageQ = eulerAngleToQuaternion(angleToTurn[1], 0, angleToTurn[0]);
-        Quaternion qToTurn  = combineQuaternion(imageQ, new Quaternion(0, 0, -0.707f, 0.707f));
+        final Mat undistortAr = undistortPoints(AR_Center);
+        final double[] laser = {711, 455};
+        final double[] angleToTurn = pixelDistanceToAngle(undistortAr.get(0, 0), laser, pattern);
+        final Quaternion imageQ = eulerAngleToQuaternion(angleToTurn[1], 0, angleToTurn[0]);
+        final Quaternion qToTurn  = combineQuaternion(imageQ, new Quaternion(0, 0, -0.707f, 0.707f));
         move_to(qrData[1], qrData[2], qrData[3], qToTurn);
-        log_kinematics();
 
         api.laserControl(true);
         api.takeSnapshot();
@@ -76,10 +74,10 @@ public class YourService extends KiboRpcService {
 
         move_toB(pattern, qrData[1], qrData[3]);
 
-        boolean cleared = false;
-        while (!cleared) {
+        boolean cleared;
+        do {
             cleared = api.reportMissionCompletion();
-        }
+        } while (!cleared);
     }
 
     @Override
@@ -95,8 +93,10 @@ public class YourService extends KiboRpcService {
     // GLOBAL CONSTANT
 
     final int LOOP_MAX = 3;
+    /*
     final int NAV_MAX_WIDTH = 1280;
     final int NAV_MAX_HEIGHT = 960;
+    */
 
     final double[] CAM_MATSIM = {
             567.229305, 0.0, 659.077221,
@@ -134,7 +134,7 @@ public class YourService extends KiboRpcService {
 
     private void move_to(double x, double y, double z, Quaternion q) {
         final String TAG = "move_to";
-        Point p = new Point(x, y, z);
+        final Point p = new Point(x, y, z);
 
         int counter = 0;
         Result result;
@@ -181,8 +181,8 @@ public class YourService extends KiboRpcService {
         int[] intArr = new int[bMap.getWidth() * bMap.getHeight()];
         bMap.getPixels(intArr, 0, bMap.getWidth(), 0, 0, bMap.getWidth(), bMap.getHeight());
 
-        LuminanceSource source = new RGBLuminanceSource(bMap.getWidth(), bMap.getHeight(), intArr);
-        BinaryBitmap out = new BinaryBitmap(new HybridBinarizer(source));
+        final LuminanceSource source = new RGBLuminanceSource(bMap.getWidth(), bMap.getHeight(), intArr);
+        final BinaryBitmap out = new BinaryBitmap(new HybridBinarizer(source));
 
         long end = System.currentTimeMillis();
         Log.i(TAG, "ElapsedTime=" + (end-start));
@@ -193,25 +193,27 @@ public class YourService extends KiboRpcService {
         final String TAG = "QRreader";
         Log.i(TAG, "Start");
 
-        Map<DecodeHintType, Object> hints = new Hashtable<>();
-        List<BarcodeFormat> qr = new ArrayList<>(); qr.add(BarcodeFormat.QR_CODE);
+        final Map<DecodeHintType, Object> hints = new Hashtable<>();
+        final List<BarcodeFormat> qr = new ArrayList<>(); qr.add(BarcodeFormat.QR_CODE);
         hints.put(DecodeHintType.POSSIBLE_FORMATS, qr);
         hints.put(DecodeHintType.CHARACTER_SET, "utf-8");
 
         try {
-            Thread.sleep(15000);
+            Thread.currentThread().sleep(15000);
         }
-        catch (Exception e) {}
+        catch (Exception e) {
+            e.printStackTrace();
+        }
 
         String text = null;
         int counter = 0;
         while (text == null && counter < LOOP_MAX) {
             try {
                 long start = System.currentTimeMillis();
-                BinaryBitmap bitmap = getNavImg();
-                com.google.zxing.Result data = new QRCodeReader().decode(bitmap, hints);
+                final BinaryBitmap bitmap = getNavImg();
+                final com.google.zxing.Result data = new QRCodeReader().decode(bitmap, hints);
 
-                ResultPoint[] p = data.getResultPoints();
+                final ResultPoint[] p = data.getResultPoints();
                 for (int i = 0; i < p.length; i++) {
                     Log.i(TAG, "ResultPoint[" + i + "]=" + p[i].toString());
                     if (p[i] instanceof FinderPattern) {
@@ -270,12 +272,12 @@ public class YourService extends KiboRpcService {
         final String TAG = "ar_read";
         final long start = System.currentTimeMillis();
 
-        Dictionary dict = Aruco.getPredefinedDictionary(Aruco.DICT_5X5_250);
+        final Dictionary dict = Aruco.getPredefinedDictionary(Aruco.DICT_5X5_250);
         List<Mat> corners = new ArrayList<>();
         Mat ids = new Mat();
 
         try {
-            Thread.sleep(15000);
+            Thread.currentThread().sleep(16000);
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -319,7 +321,7 @@ public class YourService extends KiboRpcService {
             Log.i(TAG, "--Fail: Only found " + ids.rows() + " markers");
         }
 
-        Mat AR_Center = findCenterRect(markersCenter[0], markersCenter[1], markersCenter[2], markersCenter[3]);
+        final Mat AR_Center = findCenterRect(markersCenter[0], markersCenter[1], markersCenter[2], markersCenter[3]);
         Log.i(TAG, "distorted=" + AR_Center.dump());
 
         end = System.currentTimeMillis();
@@ -395,12 +397,12 @@ public class YourService extends KiboRpcService {
         }
 
         if (pattern == 1 || pattern == 8) {
-            xAngle -= 1.6;
-            yAngle -= 1.3;
+            xAngle -= 1.625;
+            yAngle -= 1.34;
         }
 
         if (pattern == 2 || pattern == 3 || pattern == 4) {
-            yAngle -= 1.3;
+            yAngle -= 1.35;
         }
 
         Log.i(TAG, "xAngle=" + xAngle);
@@ -524,9 +526,9 @@ public class YourService extends KiboRpcService {
     private void move_toB(int pattern, float A_PrimeX, float A_PrimeZ) {
         final String TAG = "move_toB";
         long start = System.currentTimeMillis();
-        Quaternion q = new Quaternion(0,0,-0.707f,0.707f);
+        final Quaternion q = new Quaternion(0,0,-0.707f,0.707f);
 
-        Point PointB = new Point(10.6000, -8.0000, 4.5000);
+        final Point PointB = new Point(10.6000, -8.0000, 4.5000);
 
         if (pattern == 2 || pattern == 3 || pattern == 4) {
             move_to(10.6000, -8.6500, PointB.getZ(), q);
