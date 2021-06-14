@@ -59,13 +59,18 @@ public class YourService extends KiboRpcService {
             move_to(qrData[1], qrData[2], qrData[3], new Quaternion(0, 0, -0.707f, 0.707f));
         }
 
-        final Mat AR_Center = ar_read();
+        final Point AR_Center_3d = ar_read();
+//        final Point laserPoint = new Point(1.0f, 0.0f, 0.0f);
+//        Quaternion quaLaserToTarget = quaternionFrom2Points(laserPoint, AR_Center_3d);
+        double angleToLaser[] = getLaserAngleToTarget(AR_Center_3d);
+        Quaternion qToTarget = eulerAngleToQuaternion(angleToLaser[0], 0.0f, angleToLaser[1]);
+        final Quaternion qToTurn = combineQuaternion(qToTarget, new Quaternion(0, 0, -0.707f, 0.707f));
 
-        final Mat undistortAr = undistortPoints(AR_Center);
-        final double[] laser = {711, 455};
-        final double[] angleToTurn = pixelDistanceToAngle(undistortAr.get(0, 0), laser, pattern);
-        final Quaternion imageQ = eulerAngleToQuaternion(angleToTurn[1], 0, angleToTurn[0]);
-        final Quaternion qToTurn  = combineQuaternion(imageQ, new Quaternion(0, 0, -0.707f, 0.707f));
+//        final Mat undistortAr = undistortPoints(AR_Center);
+//        final double[] laser = {711, 455};
+//        final double[] angleToTurn = pixelDistanceToAngle(undistortAr.get(0, 0), laser, pattern);
+//        final Quaternion imageQ = eulerAngleToQuaternion(angleToTurn[1], 0, angleToTurn[0]);
+
         move_to(qrData[1], qrData[2], qrData[3], qToTurn);
 
         api.laserControl(true);
@@ -107,6 +112,8 @@ public class YourService extends KiboRpcService {
     final double[] DIST_COEFFSIM = {
             -0.216247, 0.03875, -0.010157, 0.001969, 0.0
     };
+
+    final float MARKER_LENGTH = 0.05f;
 
     class imagePoint {
         float x, y;
@@ -268,7 +275,7 @@ public class YourService extends KiboRpcService {
 
     // AR CODE READING AND RELATED MATHS OPERATION
 
-    private Mat ar_read() {
+    private Point ar_read() {
         final String TAG = "ar_read";
         final long start = System.currentTimeMillis();
 
@@ -277,7 +284,7 @@ public class YourService extends KiboRpcService {
         Mat ids = new Mat();
 
         try {
-            Thread.currentThread().sleep(16000);
+            Thread.currentThread().sleep(21000);
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -292,17 +299,19 @@ public class YourService extends KiboRpcService {
 
         // LOG
         for (int j = 0; j < corners.size(); j++) {
-            Mat temp = corners.get(j);
+            Mat corner = corners.get(j);
 
-            for (int z = 0; z < temp.cols(); z++) {
-                double[] t = temp.get(0, z);
-                t[0] = t[0] + 320;
-                t[1] = t[1] + 240;
-                temp.put(0, z, t);
+            for (int z = 0; z < corner.cols(); z++) {
+                double[] coord = corner.get(0, z);
+                coord[0] = coord[0] + 320;
+                coord[1] = coord[1] + 240;
+                corner.put(0, z, coord);
             }
-
-            Log.i(TAG, "corners[" + j + "]=" + temp.dump());
+            corner.copyTo(corners.get(j));
+            Log.i(TAG, "corner=" + corner.dump());
+            Log.i(TAG, "corners[" + j + "]=" + corners.get(j).dump());
         }
+
         Log.i(TAG, "ids= " + ids.dump());
         long end = System.currentTimeMillis();
         Log.i(TAG, "ar_read_time=" + (end-start));
@@ -326,7 +335,86 @@ public class YourService extends KiboRpcService {
 
         end = System.currentTimeMillis();
         Log.i(TAG, "ar_read+process_time=" + (end-start));
-        return  AR_Center;
+        return  estimateMarkerPos(corners, ids);
+    }
+
+    private Point estimateMarkerPos(List<Mat> markerCorners, Mat ids) {
+        final String TAG = "estimateMarkerPos";
+        Log.i(TAG, "Start");
+        final long start = System.currentTimeMillis();
+
+        Mat rvec = new Mat();
+        Mat tvec = new Mat();
+
+        Mat cameraMat = new Mat(3, 3, CvType.CV_32FC1);
+        Mat distCoeffs = new Mat(1, 5, CvType.CV_32FC1);
+
+        cameraMat.put(0, 0, CAM_MATSIM);
+        distCoeffs.put(0, 0, DIST_COEFFSIM);
+
+        Aruco.estimatePoseSingleMarkers(markerCorners, MARKER_LENGTH, cameraMat, distCoeffs, rvec, tvec);
+
+        long end = System.currentTimeMillis();
+
+        // Log
+        Log.i(TAG, "rvec: " + rvec.dump());
+        Log.i(TAG, "rvec size: " + rvec.rows() + " rows" + rvec.cols() + " cols");
+        Log.i(TAG, "tvec: " + tvec.dump());
+        Log.i(TAG, "tvec: " + tvec.rows() +  " rows" + tvec.cols() + " cols");
+        Log.i(TAG, "ids= " + ids.dump());
+        Log.i(TAG, "estimate 4 marker position time: " + (end-start));
+        return getArCenterTvec(tvec);
+    }
+
+    private Point getArCenterTvec(Mat cornerTvec) {
+        final String TAG = "getArCenterTvec";
+        double xCenter = (cornerTvec.get(0, 0)[0] + cornerTvec.get(1, 0)[0] + cornerTvec.get(2, 0)[0] +
+                    cornerTvec.get(3, 0)[0]) / 4.0;
+        double yCenter = (cornerTvec.get(0, 0)[1] + cornerTvec.get(1, 0)[1] + cornerTvec.get(2, 0)[1] +
+                    cornerTvec.get(3, 0)[1]) / 4.0;
+        double zCenter = (cornerTvec.get(0, 0)[2] + cornerTvec.get(1, 0)[2] + cornerTvec.get(2, 0)[2] +
+                    cornerTvec.get(3, 0)[2]) / 4.0;
+
+        Log.i(TAG, "AR center tvec in cam's coord system: [" + xCenter + ", " + yCenter + ", " + zCenter);
+
+        // Shift origin
+        xCenter = xCenter - (0 + 0.0422) - 0.0572; // y axis in Astrobee's world;
+        yCenter = yCenter - (- (0 + 0.08266) - (-0.1111)); // z axis in Astrobee's world
+        zCenter = zCenter - (0 - 0.1177); // x axis in Astrobee's world
+
+        Log.i(TAG, "AR center tvec in our coord system(Astrobee's Axis): [" + zCenter + ", " + xCenter + ", " + yCenter);
+        Log.i(TAG, "AR center tvec in our coord system(Kibo's Axis): [" + xCenter + ", " + zCenter + ", " + yCenter);
+
+//        -0.1245617163499451, -0.053375311650620275, 0.7558894579555107 - cam's world, cam's axis
+//        -0.16676 -0.136035, 0.8735894 - Astrobee's world, came axis
+//        -0.16676, 0.8735894, -0.136035 - Astrobee's world, kibo axis
+//        0.8735894, -0.16676, -0.136035-  Astrobee's world, Astrobee axis  <---
+        return new Point(zCenter, xCenter, yCenter);
+    }
+
+    private double[] getLaserAngleToTarget(Point AR_vec) {
+        String TAG = "getLaserAngleToTarget";
+        final Point laserPoint = new Point(AR_vec.getX(), 0.0f, 0.0f);
+
+        double AR_vec_length_z = Math.sqrt(AR_vec.getX() * AR_vec.getX() + AR_vec.getY() * AR_vec.getY());
+        double zAngle = Math.acos(laserPoint.getX() / AR_vec_length_z);
+
+        double AR_vec_length_y = Math.sqrt(AR_vec.getX() * AR_vec.getX() + AR_vec.getZ() * AR_vec.getZ());
+        double yAngle = Math.acos(laserPoint.getX() / AR_vec_length_y);
+
+        Log.i(TAG, "AR vec length - z: " + AR_vec_length_z);
+        Log.i(TAG, "AR vec length - y: " + AR_vec_length_y);
+
+        zAngle = Math.toDegrees(zAngle);
+        yAngle = Math.toDegrees(yAngle);
+        if (AR_vec.getY() < 0) zAngle *= (-1);
+        if (AR_vec.getZ() > 0) yAngle *= (-1);
+
+        Log.i(TAG, "zAngle: " + zAngle);
+        Log.i(TAG, "yAngle: " + yAngle);
+
+        double res[] = { yAngle, zAngle};
+        return res;
     }
 
     private Mat undistortPoints(Mat points) {
@@ -412,6 +500,26 @@ public class YourService extends KiboRpcService {
         return out;
     }
 
+    // Quaternion from v to u
+    private Quaternion quaternionFrom2Points(Point u, Point v) {
+        final String TAG = "quaternionFrom2Points";
+        // Crossproduct u x v
+        double cx = u.getY() * v.getZ() - u.getZ() * v.getY();
+        double cy = u.getZ() * v.getX() - u.getX() * v.getZ();
+        double cz = u.getX() * v.getY() - u.getY() * v.getX();
+
+        double uLength = Math.sqrt(u.getX() * u.getX() + u.getY() * u.getY() + u.getZ() * u.getZ());
+        double vLength = Math.sqrt(v.getX() * v.getX() + v.getY() * v.getY() + v.getZ() * v.getZ());
+
+        // Dot Product u . v
+        double dotProduct = u.getX() * v.getX() + u.getY() * v.getY() + u.getZ() * v.getZ();
+
+        double w = Math.sqrt((uLength * uLength) * (vLength * vLength)) + dotProduct;
+
+        Log.i(TAG, " x:" + cx + " y:" + cy + " z:" + cz + " w:" + w);
+        return new Quaternion((float)cx, (float)cy, (float)cz, (float) w);
+    }
+
     private Quaternion eulerAngleToQuaternion(double xAngle, double yAngle, double zAngle) {
         final String TAG = "Convert euler angle to quaternion";
 
@@ -465,7 +573,7 @@ public class YourService extends KiboRpcService {
         final float[] target = {A_PrimeX - A_PrimeToTarget, A_PrimeZ - A_PrimeToTarget};
         final float KOZ_edgeT = target[1] - 0.3f;
 
-        final float x = KIZ_edgeR - 0.01f;
+        final float x = KIZ_edgeR - 0.005f;
 
         Log.i(TAG, "KOZ_edgeT=" + KOZ_edgeT);
 
